@@ -15,7 +15,10 @@ export function registerAutoWorkTool(tools, { auth, engine }) {
       action: { type: 'string', description: 'create、list、run、pause、resume 或 remove。' },
       job_id: { type: 'string', description: '已有任务 ID。' },
       title: { type: 'string', description: '任务标题。' },
+      kind: { type: 'string', description: '执行模式：agent 或 command。command 模式不使用大模型。' },
       prompt: { type: 'string', description: 'Agent 任务提示词，必须自包含。' },
+      command: { type: 'string', description: 'command 模式要执行的本地命令。' },
+      args: { type: 'string', description: 'command 模式的命令参数。' },
       cron: { type: 'string', description: '五段 cron 表达式，例如 0 9 * * *。' },
       interval_minutes: { type: 'number', description: '从触发时刻开始计算的固定间隔分钟数。' },
       run_at: { type: 'number', description: '一次性执行的毫秒时间戳。' },
@@ -27,7 +30,7 @@ export function registerAutoWorkTool(tools, { auth, engine }) {
       switch (args.action) {
         case 'list': return { kind: 'list', jobs: await engine.list(identity) }
         case 'create': return { kind: 'created', job: await engine.create({
-          title: args.title, prompt: args.prompt, cron: args.cron,
+          title: args.title, kind: args.kind, prompt: args.prompt, command: args.command, args: args.args, cron: args.cron,
           intervalMinutes: args.interval_minutes, runAt: args.run_at, target: args.target,
         }, identity) }
         case 'run': return { kind: 'run', ok: await engine.run(args.job_id, identity, args.prompt ?? '') }

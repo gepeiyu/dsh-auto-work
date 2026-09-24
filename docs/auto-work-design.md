@@ -30,7 +30,10 @@ interface JobRecord {
   id: string
   owner: { organizationId: string; userId: string }
   title: string
-  prompt: string
+  prompt?: string
+  kind: 'agent' | 'command'
+  command?: string
+  args?: string
   target: { sessionId?: string; workspaceId?: string; workdir?: string }
   schedule: {
     enabled: boolean

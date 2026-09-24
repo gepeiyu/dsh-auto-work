@@ -93,6 +93,33 @@ cron 使用本地时间。错过的时间点不会补发；运行中的任务不
 
 创建任务时常用参数包括 `title`、`prompt`、`kind`、`command`、`args`、`cron`、`interval_minutes`、`run_at` 和 `target`。`target` 可包含 `sessionId`、`workspaceId` 和 `workdir`。
 
+Agent 任务示例：
+
+```json
+{
+  "action": "create",
+  "title": "每日销售摘要",
+  "kind": "agent",
+  "prompt": "读取今天的销售数据，生成摘要并保存到工作目录。",
+  "cron": "30 14 * * *",
+  "target": { "sessionId": "session-id" }
+}
+```
+
+纯命令任务示例。它不会创建或调用 Agent，也不需要 `prompt`、模型或会话参数：
+
+```json
+{
+  "action": "create",
+  "title": "同步销售报告",
+  "kind": "command",
+  "command": "/bin/sh",
+  "args": "-c \"./scripts/sync-report.sh\"",
+  "cron": "0 9 * * *",
+  "target": { "workdir": "/path/to/workspace" }
+}
+```
+
 ## HTTP API
 
 所有接口都使用当前 DSH 请求身份：

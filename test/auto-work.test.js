@@ -9,6 +9,7 @@ import { isValidCron, nextIntervalMs, nextRunAtMs } from '../src/core/schedule.j
 import { assertTarget } from '../src/policy.js'
 import { apply } from '../src/index.js'
 import { decorateTargets } from '../src/routes.js'
+import { registerAutoWorkTool } from '../src/tools.js'
 
 test('schedule parser supports cron and interval without replaying current minute', () => {
   assert.equal(isValidCron('0 9 * * *'), true)
@@ -126,6 +127,21 @@ test('command jobs execute directly and retain output', async () => {
     await engine.dispose()
     await rm(dir, { recursive: true, force: true })
   }
+})
+
+test('auto_work tool creates command jobs without an Agent prompt', async () => {
+  let created
+  const registered = []
+  registerAutoWorkTool({ register(tool) { registered.push(tool); return () => {} } }, {
+    auth: { currentIdentity: () => ({ organizationId: 'org', userId: 'alice' }) },
+    engine: { create: async (input, identity) => { created = { input, identity }; return { id: 'command-job', ...input } } },
+  })
+  const result = await registered[0].execute({ action: 'create', title: '同步文件', kind: 'command', command: '/bin/sh', args: '-c "echo ok"', cron: '0 9 * * *' })
+  assert.equal(result.kind, 'created')
+  assert.equal(created.input.kind, 'command')
+  assert.equal(created.input.prompt, undefined)
+  assert.equal(created.input.command, '/bin/sh')
+  assert.equal(created.input.args, '-c "echo ok"')
 })
 
 test('plugin bootstrap resolves host services through Cordis injection', async () => {
