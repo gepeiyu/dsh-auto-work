@@ -1,0 +1,4 @@
+# Host bundle for dsh-auto-work.
+- insert:
+    - id: dsh-auto-work
+      name: 'dsh-auto-work'

@@ -1,0 +1,12 @@
+node_modules/
+.DS_Store
+*.log
+coverage/
+.env
+.env.*
+!.env.example
+
+# Local DSH data and generated caches
+.dsh/
+dist/
+

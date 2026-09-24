@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>自动工作界面预览</title>
+<style>
+  :root { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#172033; }
+  body { margin:0; min-height:100vh; background:#f6f8fc; }
+  .shell { height:100vh; display:grid; grid-template-columns:220px 1fr; }
+  aside { background:#172554; color:#dbeafe; padding:22px 16px; }
+  aside h2 { margin:0 0 28px; font-size:17px; }
+  .nav { padding:10px 12px; border-radius:8px; margin:5px 0; color:#bfdbfe; }
+  .nav.active { background:#2563eb; color:#fff; }
+  main { padding:32px 40px; }
+  main h1 { margin:0 0 8px; font-size:26px; }
+  main p { color:#64748b; }
+  .card { width:360px; position:fixed; right:22px; bottom:22px; padding:16px; background:#fff; border:1px solid #dfe5ef; border-radius:12px; box-shadow:0 12px 36px #0003; }
+  .card h3 { margin:0 0 12px; font-size:18px; }
+  .status { margin:0 0 12px; color:#64748b; font-size:12px; }
+  input, textarea, select { display:block; width:100%; box-sizing:border-box; margin:0 0 8px; padding:9px 10px; border:1px solid #cbd5e1; border-radius:7px; font:inherit; }
+  textarea { resize:vertical; }
+  .actions { display:flex; gap:8px; }
+  button { border:1px solid #94a3b8; border-radius:7px; padding:8px 12px; background:#fff; color:#172033; font:inherit; cursor:pointer; }
+  button.primary { background:#2563eb; border-color:#2563eb; color:#fff; }
+  .job { background:#fff; border:1px solid #e5eaf2; border-radius:10px; padding:15px; margin-top:20px; max-width:620px; }
+  .job strong { display:block; margin-bottom:6px; }
+  .pill { display:inline-block; background:#eff6ff; color:#1d4ed8; border-radius:999px; padding:3px 8px; font-size:12px; margin-right:4px; }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <aside><h2>DSH Workspace</h2><div class="nav">新会话</div><div class="nav">会话列表</div><div class="nav active">自动工作</div><div class="nav">设置</div></aside>
+    <main><h1>工作空间</h1><p>这里是 DSH 的会话区域。自动工作任务由宿主进程持续调度。</p><div class="job"><strong>每日整理项目进展</strong><span class="pill">每天 09:00</span><span class="pill">默认工作空间</span><p style="margin-bottom:0">状态：等待下一次执行</p></div></main>
+  </div>
+  <section class="card">
+    <h3>自动工作</h3>
+    <p class="status">2 个任务；目标列表由服务端按当前用户过滤</p>
+    <input value="每日整理项目进展" aria-label="任务标题">
+    <textarea rows="4" aria-label="提示词">整理当前项目的进展，检查待办事项，并生成简洁的工作摘要。</textarea>
+    <input value="0 9 * * *" aria-label="cron">
+    <select aria-label="目标"><option>默认工作空间（新会话）</option><option>工作空间 own-workspace</option><option>会话 own-session</option></select>
+    <div class="actions"><button class="primary">创建任务</button><button>关闭</button></div>
+  </section>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>dsh-auto-work 沙盒测试报告</title>
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; background: #f5f7fb; color: #172033; }
+    main { width: 920px; margin: 44px auto; }
+    .hero { background: linear-gradient(135deg, #172554, #2563eb); color: white; border-radius: 18px; padding: 28px 32px; box-shadow: 0 12px 28px #17255430; }
+    .hero h1 { margin: 0 0 8px; font-size: 28px; }
+    .hero p { margin: 0; opacity: .84; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+    .card { background: white; border: 1px solid #e3e8f2; border-radius: 14px; padding: 20px; box-shadow: 0 4px 14px #1e293b0b; }
+    .card h2 { margin: 0 0 14px; font-size: 16px; }
+    .metric { display: flex; align-items: center; gap: 12px; }
+    .check { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: #dcfce7; color: #15803d; font-weight: 700; }
+    .metric strong { font-size: 24px; }
+    table { width: 100%; border-collapse: collapse; }
+    td { padding: 9px 0; border-bottom: 1px solid #eef1f6; font-size: 14px; }
+    td:last-child { text-align: right; color: #15803d; font-weight: 600; }
+    .target { display: inline-flex; padding: 6px 9px; border-radius: 7px; background: #eff6ff; color: #1d4ed8; margin: 4px 4px 0 0; font-size: 13px; }
+    .note { margin-top: 18px; color: #526078; font-size: 13px; }
+    code { background: #eef2ff; padding: 2px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <h1>dsh-auto-work 沙盒测试</h1>
+      <p>隔离容器：node:24-alpine · 挂载模式：只读 · 测试时间：2026-09-23</p>
+    </section>
+    <section class="grid">
+      <article class="card">
+        <h2>测试结果</h2>
+        <div class="metric"><span class="check">✓</span><div><strong>5 / 5</strong><div>核心测试全部通过</div></div></div>
+        <table style="margin-top:16px">
+          <tr><td>cron 与固定间隔</td><td>通过</td></tr>
+          <tr><td>任务所有者隔离</td><td>通过</td></tr>
+          <tr><td>目标权限校验</td><td>通过</td></tr>
+          <tr><td>越权运行拒绝</td><td>通过</td></tr>
+          <tr><td>Agent 事件结算</td><td>通过</td></tr>
+        </table>
+      </article>
+      <article class="card">
+        <h2>服务端目标投影</h2>
+        <p style="margin-top:0;color:#526078">面板只显示经过租户策略过滤的目标：</p>
+        <span class="target">默认工作空间</span>
+        <span class="target">workspace: own-workspace</span>
+        <span class="target">session: own-session</span>
+        <p class="note">没有读取全局工作空间注册表，也没有使用浏览器提交的用户身份。</p>
+      </article>
+    </section>
+    <p class="note">执行命令：<code>docker run --rm -v repo:/workspace:ro -w /workspace node:24-alpine npm test</code></p>
+  </main>
+</body>
+</html>

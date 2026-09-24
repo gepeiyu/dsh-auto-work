@@ -1,0 +1,49 @@
+{
+  "name": "dsh-auto-work",
+  "version": "0.1.0",
+  "description": "Scheduled Agent and command work engine for DeepSeek Harness",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./core": "./src/core/index.js",
+    "./policy": "./src/policy.js",
+    "./client": "./lib/client.js"
+  },
+  "files": [
+    "src",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "build:client": "node scripts/build-client.mjs"
+  },
+  "dsh": {
+    "compatibility": ">=0.1.5-rc.1 <0.2.0",
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "immediately": true,
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-client-connection": "^0.1.5-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.1.5-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.5-rc.2"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-tools": "^0.1.5-rc.3"
+  }
+}
