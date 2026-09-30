@@ -23,16 +23,21 @@ DSH Web GUI 的常驻定时任务插件，运行在 DSH Web 宿主进程中，�
 
 ## 安装
 
-在项目目录执行：
+从 Git 仓库安装：
 
 ```bash
 pnpm install
-pnpm run build
-dsh plugin --profile web add link:/path/to/dsh-auto-work
+dsh plugin --profile web add git+https://github.com/gepeiyu/dsh-auto-work.git
 dsh web
 ```
 
-将 `/path/to/dsh-auto-work` 替换为项目实际路径。安装后重启 DSH Web 服务。
+本地开发或测试时，也可以使用目录链接：
+
+```bash
+dsh plugin --profile web add link:/path/to/dsh-auto-work
+```
+
+安装后重启 DSH Web 服务。
 
 ## 开发命令
 
