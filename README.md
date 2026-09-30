@@ -27,14 +27,14 @@ DSH Web GUI 的常驻定时任务插件，运行在 DSH Web 宿主进程中，�
 
 ```bash
 pnpm install
-dsh plugin --profile web add git+https://github.com/gepeiyu/dsh-auto-work.git
-dsh web
+npx @deepseek-ai/dsh plugin --profile web add "git+https://github.com/gepeiyu/dsh-auto-work.git"
+npx @deepseek-ai/dsh web
 ```
 
 本地开发或测试时，也可以使用目录链接：
 
 ```bash
-dsh plugin --profile web add link:/path/to/dsh-auto-work
+npx @deepseek-ai/dsh plugin --profile web add "link:/path/to/dsh-auto-work"
 ```
 
 安装后重启 DSH Web 服务。
