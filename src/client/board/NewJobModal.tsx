@@ -1,0 +1,606 @@
+/**
+ * New-job modal: title + description + prompt + session targeting
+ * (collapsible workspace tree) + optional cron schedule.
+ *
+ * The targeting tree is this plugin's headline feature: per workspace
+ * (project) group a "new session each run" leaf plus that project's
+ * existing sessions (pinned continuation); the leading default group
+ * covers the default workspace. Selecting a session pins the job to that
+ * conversation (session context semantics).
+ */
+import { useEffect, useMemo, useState } from 'react'
+import type { ModelOptions, PresetOption, PresetOptions, TargetGroup } from '../target-options.ts'
+import type { BoardControllerFace } from '../controller-face.ts'
+import { isValidCron } from '../../core/schedule.ts'
+import { t, type AutoWorkKey } from '../locales.ts'
+import css from '../board.module.css'
+
+/** One selectable leaf inside a group. */
+export interface Leaf {
+  key: string
+  label: string
+  workdir: string
+  sessionId: string
+}
+
+/** Common scheduled-run presets (cron → locale label), task-board parity. */
+const SCHEDULE_PRESETS: ReadonlyArray<{ cron: string; label: AutoWorkKey }> = [
+  { cron: '0 9 * * *', label: 'detail.schedule.preset.daily9' },
+  { cron: '0 * * * *', label: 'detail.schedule.preset.hourly' },
+  { cron: '*/10 * * * *', label: 'detail.schedule.preset.tenMin' },
+  { cron: '0 9 * * 1', label: 'detail.schedule.preset.weeklyMon9' },
+]
+
+/** The default-workspace placeholder group (used before options load). */
+export const DEFAULT_TARGET_GROUPS: TargetGroup[] = [
+  { key: 'default', name: '默认工作空间', workdir: '', sessions: [] },
+]
+
+/**
+ * Parse a fixed-interval draft (value + unit minutes) into total minutes.
+ * Undefined unless the value is a whole number > 0.
+ */
+export function intervalDraftMinutes(value: string, unit: string): number | undefined {
+  const count = Number(value)
+  const unitMinutes = Number(unit)
+  if (!Number.isInteger(count) || count <= 0) return undefined
+  if (!Number.isInteger(unitMinutes) || unitMinutes <= 0) return undefined
+  return count * unitMinutes
+}
+
+/** Local `datetime-local` input value for `date`, at minute precision. */
+export function localInputValue(date: Date): string {
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+/** Flatten a group into its selectable leaves: new-session first, sessions after. */
+export function leavesOf(group: TargetGroup): Leaf[] {
+  return [
+    { key: `${group.key}:new`, label: '新增会话', workdir: group.workdir, sessionId: '' },
+    ...group.sessions.map(session => ({
+      key: `${group.key}:ss:${session.id}`,
+      label: session.title,
+      workdir: group.workdir,
+      sessionId: session.id,
+    })),
+  ]
+}
+
+/** One selectable model option (flattened across provider groups). */
+interface ModelLeaf {
+  key: string
+  label: string
+  provider: string
+  model: string
+}
+
+/** Option label for one preset row (name + id when they differ). */
+export function presetOptionLabel(preset: PresetOption): string {
+  const name = preset.name ?? ''
+  const label = name !== '' && name !== preset.id ? `${name} (${preset.id})` : preset.id
+  return preset.broken !== undefined ? `⚠ ${label}` : label
+}
+
+/**
+ * The collapsible session-target tree (shared by the new-job modal and the
+ * job-detail editor). Pure presentational: callers own groups/selection.
+ *
+ * When `presetOptions` is supplied and a "new session" leaf is the SELECTED
+ * row, that row also carries the agent-preset dropdown (a pinned session
+ * keeps the preset its history was produced under, so session rows never
+ * show one).
+ */
+export function TargetTree({ groups, expanded, selectedKey, onToggle, onSelect, presetOptions, presetDefault, presetId, onPresetChange }: {
+  groups: TargetGroup[]
+  expanded: ReadonlySet<string>
+  selectedKey: string
+  onToggle(key: string): void
+  onSelect(key: string): void
+  /** Preset roster powering the new-session dropdown (omit → none shown). */
+  presetOptions?: PresetOption[]
+  /** Roster default id, for the "follow default" option label. */
+  presetDefault?: string
+  /** Currently pinned preset id ('' = follow the default). */
+  presetId?: string
+  onPresetChange?(id: string): void
+}) {
+  const stop = (event: { stopPropagation(): void }): void => { event.stopPropagation() }
+  return (
+    <div className={css.targetTree} role="tree" aria-label={t('new.target')}>
+      {groups.map(group => {
+        const open = expanded.has(group.key)
+        const leaves = leavesOf(group)
+        return (
+          <div key={group.key} className={css.targetGroup} role="group">
+            <button
+              type="button"
+              className={css.targetGroupHeader}
+              aria-expanded={open}
+              onClick={() => { onToggle(group.key) }}
+            >
+              <span className={`${css.targetCaret} ${open ? css.targetCaretOpen : ''}`} aria-hidden="true">▸</span>
+              <span className={css.targetGroupName}>{group.name}</span>
+              <span className={css.targetGroupCount}>{group.sessions.length > 0 ? `${group.sessions.length}` : ''}</span>
+            </button>
+            {open && (
+              <div className={css.targetGroupBody}>
+                {leaves.map(leaf => {
+                  const selected = leaf.key === selectedKey
+                  // The new-session leaf carries the preset dropdown while
+                  // selected; a <select> cannot nest inside a <button>, so
+                  // that row renders as a div (still a treeitem).
+                  if (leaf.sessionId === '' && presetOptions !== undefined && selected) {
+                    const known = presetId === '' || presetOptions.some(preset => preset.id === presetId)
+                    const defaultLabel = presetDefault !== undefined
+                      ? `${t('new.preset.followDefault')}（${presetDefault}）`
+                      : t('new.preset.followDefault')
+                    return (
+                      <div
+                        key={leaf.key}
+                        role="treeitem"
+                        aria-selected={selected}
+                        className={`${css.targetRow} ${css.targetRowSelected}`}
+                        onClick={() => { onSelect(leaf.key) }}
+                        title={`${group.name} · ${leaf.label}`}
+                      >
+                        <span className={css.targetRowDot} aria-hidden="true" />
+                        <span className={css.targetRowLabel}>{leaf.label}</span>
+                        <select
+                          className={css.presetSelect}
+                          value={presetId ?? ''}
+                          aria-label={t('new.preset')}
+                          onClick={stop}
+                          onMouseDown={stop}
+                          onChange={event => { onPresetChange?.(event.target.value) }}
+                        >
+                          <option value="">{defaultLabel}</option>
+                          {!known && presetId !== '' && (
+                            <option value={presetId}>{presetId}</option>
+                          )}
+                          {presetOptions.map(preset => (
+                            <option
+                              key={preset.id}
+                              value={preset.id}
+                              title={preset.broken ?? preset.description ?? preset.id}
+                              disabled={preset.broken !== undefined}
+                            >
+                              {presetOptionLabel(preset)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )
+                  }
+                  return (
+                    <button
+                      key={leaf.key}
+                      type="button"
+                      role="treeitem"
+                      aria-selected={selected}
+                      className={`${css.targetRow} ${selected ? css.targetRowSelected : ''}`}
+                      onClick={() => { onSelect(leaf.key) }}
+                      title={leaf.sessionId === '' ? `${group.name} · ${leaf.label}` : leaf.label}
+                    >
+                      <span className={css.targetRowDot} aria-hidden="true" />
+                      <span className={css.targetRowLabel}>{leaf.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Flatten provider groups into selectable model leaves. */
+export function modelLeavesOf(options: ModelOptions): ModelLeaf[] {
+  const leaves: ModelLeaf[] = []
+  for (const group of options.groups) {
+    for (const model of group.models) {
+      leaves.push({
+        key: `${group.id}\u0000${model.id}`,
+        label: `${group.name} · ${model.name}`,
+        provider: group.id,
+        model: model.id,
+      })
+    }
+  }
+  return leaves
+}
+
+/** New-job form overlay. */
+export function NewJobModal({ controller, targetOptions, modelOptions, presetOptions, onClose }: { controller: BoardControllerFace; targetOptions: () => Promise<TargetGroup[]>; modelOptions: () => Promise<ModelOptions>; presetOptions: () => Promise<PresetOptions>; onClose: () => void }) {
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [prompt, setPrompt] = useState('')
+  const [kind, setKind] = useState<'agent' | 'command'>('agent')
+  const [command, setCommand] = useState('')
+  const [args, setArgs] = useState('')
+  const [commandWorkdir, setCommandWorkdir] = useState('')
+  const [groups, setGroups] = useState<TargetGroup[]>(DEFAULT_TARGET_GROUPS)
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set<string>())
+  const [selectedKey, setSelectedKey] = useState('default:new')
+  const [modelOptionsState, setModelOptionsState] = useState<ModelOptions>({ groups: [] })
+  const [modelKey, setModelKey] = useState('')
+  const [presetOptionsState, setPresetOptionsState] = useState<PresetOptions>({ presets: [] })
+  const [presetId, setPresetId] = useState('')
+  const [scheduleOn, setScheduleOn] = useState(false)
+  const [scheduleMode, setScheduleMode] = useState<'cron' | 'interval' | 'once'>('cron')
+  const [cron, setCron] = useState('0 9 * * *')
+  const [intervalValue, setIntervalValue] = useState('')
+  const [intervalUnit, setIntervalUnit] = useState<'1' | '60' | '1440'>('1')
+  // One-shot draft defaults to now + 1h (a sensible "soon but not immediate"
+  // instant the user nudges from, rather than an empty field to fill).
+  const [onceValue, setOnceValue] = useState(() => localInputValue(new Date(Date.now() + 60 * 60_000)))
+  const [error, setError] = useState<string | undefined>(undefined)
+
+  useEffect(() => {
+    let alive = true
+    void targetOptions().then(next => {
+      if (alive && next.length > 0) {
+        setGroups(next)
+        // All groups start collapsed; the user expands what they need.
+      }
+    }).catch(() => undefined)
+    void modelOptions().then(next => {
+      if (alive) setModelOptionsState(next)
+    }).catch(() => undefined)
+    void presetOptions().then(next => {
+      if (alive) setPresetOptionsState(next)
+    }).catch(() => undefined)
+    return () => { alive = false }
+  }, [targetOptions, modelOptions, presetOptions])
+
+  /** All leaves across groups, for resolving the current selection. */
+  const leafOf = useMemo(() => {
+    const map = new Map<string, Leaf>()
+    for (const group of groups) for (const leaf of leavesOf(group)) map.set(leaf.key, leaf)
+    return map
+  }, [groups])
+
+  const selected = leafOf.get(selectedKey) ?? { key: 'default:new', label: '', workdir: '', sessionId: '' }
+
+  /** Flattened model picker options; key '' = follow the default resolution. */
+  const modelLeaves = useMemo(() => modelLeavesOf(modelOptionsState), [modelOptionsState])
+  const modelDefaultLabel = selected.sessionId !== ''
+    ? t('new.model.followSession')
+    : modelOptionsState.default !== undefined
+      ? `${modelOptionsState.default.provider} · ${modelOptionsState.default.model}（${t('new.model.followDefault')}）`
+      : t('new.model.followDefault')
+
+  const toggleGroup = (key: string): void => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const submit = (): void => {
+    if (kind === 'command' && command.trim() === '') {
+      setError(t('new.commandRequired'))
+      return
+    }
+    // One-shot mode: the datetime-local draft becomes the run's ms epoch
+    // (sent as `runAt`; the host arms nextRunAt from it). Unparseable → block.
+    const onceRunAt = scheduleOn && scheduleMode === 'once'
+      ? new Date(onceValue).getTime()
+      : undefined
+    if (scheduleOn && scheduleMode === 'once' && !Number.isFinite(onceRunAt)) {
+      setError(t('new.schedule.runAt.invalid'))
+      return
+    }
+    // Stage the schedule so createJob arms it server-side in one call
+    // (one-shot carries no cron/interval — runAt below is the whole schedule).
+    controller.stageCreateSchedule?.(scheduleOn && scheduleMode !== 'once'
+      ? scheduleMode === 'interval'
+        ? (() => {
+            const minutes = intervalDraftMinutes(intervalValue, intervalUnit)
+            return minutes !== undefined ? { intervalMinutes: minutes } : undefined
+          })()
+        : isValidCron(cron.trim()) ? { cron: cron.trim() } : undefined
+      : undefined)
+    if (kind === 'command') {
+      const created = controller.createJob({
+        title,
+        description,
+        prompt: '',
+        kind: 'command',
+        command,
+        args,
+        target: { workdir: commandWorkdir.trim(), sessionId: '' },
+        ...(onceRunAt !== undefined ? { runAt: onceRunAt } : {}),
+      })
+      void Promise.resolve(created).then(job => {
+        if (job === undefined) {
+          setError(t('new.required'))
+          return
+        }
+        onClose()
+      })
+      return
+    }
+    const model = modelLeaves.find(leaf => leaf.key === modelKey)
+    const created = controller.createJob({
+      title,
+      description,
+      prompt,
+      target: { workdir: selected.workdir, sessionId: selected.sessionId },
+      // A pinned session keeps its own preset; only new sessions carry one.
+      ...(selected.sessionId === '' && presetId.trim() !== '' ? { preset: presetId.trim() } : {}),
+      ...model === undefined ? {} : { modelSelection: { provider: model.provider, model: model.model } },
+      ...(onceRunAt !== undefined ? { runAt: onceRunAt } : {}),
+    })
+    void Promise.resolve(created).then(job => {
+      if (job === undefined) {
+        setError(t('new.required'))
+        return
+      }
+      onClose()
+    })
+  }
+
+  return (
+    <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+      <form
+        className={css.modal}
+        role="dialog"
+        aria-label={t('board.new')}
+        onSubmit={event => { event.preventDefault(); submit() }}
+      >
+        <h2 className={css.modalTitle}>{t('board.new')}</h2>
+
+        <div className={css.field}>
+          <span className={css.fieldLabel}>{t('new.kind')}</span>
+          <div className={css.kindToggle} role="radiogroup" aria-label={t('new.kind')}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={kind === 'agent'}
+              className={`${css.kindOption} ${kind === 'agent' ? css.kindOptionActive : ''}`}
+              data-kind="agent"
+              onClick={() => { setKind('agent'); setError(undefined) }}
+            >
+              {t('new.kind.agent')}
+              <span className={css.kindOptionHint}>{t('new.kind.agentHint')}</span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={kind === 'command'}
+              className={`${css.kindOption} ${kind === 'command' ? css.kindOptionActive : ''}`}
+              data-kind="command"
+              onClick={() => { setKind('command'); setError(undefined) }}
+            >
+              {t('new.kind.command')}
+              <span className={css.kindOptionHint}>{t('new.kind.commandHint')}</span>
+            </button>
+          </div>
+        </div>
+
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{t('new.title')}</span>
+          <input
+            className={css.input}
+            value={title}
+            autoFocus
+            placeholder={t('new.titlePlaceholder')}
+            onChange={event => { setTitle(event.target.value); setError(undefined) }}
+          />
+        </label>
+
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{t('new.description')}</span>
+          <textarea
+            className={css.input}
+            rows={1}
+            value={description}
+            placeholder={t('new.descriptionPlaceholder')}
+            onChange={event => { setDescription(event.target.value) }}
+          />
+        </label>
+
+        {kind === 'command' ? (
+          <>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('new.command')}</span>
+              <input
+                className={css.input}
+                value={command}
+                placeholder={t('new.commandPlaceholder')}
+                aria-label={t('new.command')}
+                spellCheck={false}
+                onChange={event => { setCommand(event.target.value); setError(undefined) }}
+              />
+            </label>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('new.args')}</span>
+              <input
+                className={css.input}
+                value={args}
+                placeholder={t('new.argsPlaceholder')}
+                aria-label={t('new.args')}
+                spellCheck={false}
+                onChange={event => { setArgs(event.target.value) }}
+              />
+            </label>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('new.workdir')}</span>
+              <input
+                className={css.input}
+                value={commandWorkdir}
+                placeholder={t('new.workdirPlaceholder')}
+                aria-label={t('new.workdir')}
+                spellCheck={false}
+                onChange={event => { setCommandWorkdir(event.target.value) }}
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('new.prompt')}</span>
+              <textarea
+                className={css.input}
+                rows={3}
+                value={prompt}
+                placeholder={t('new.promptPlaceholder')}
+                onChange={event => { setPrompt(event.target.value) }}
+              />
+            </label>
+
+            <div className={css.field}>
+              <span className={css.fieldLabel}>{t('new.target')}</span>
+              <TargetTree
+                groups={groups}
+                expanded={expanded}
+                selectedKey={selectedKey}
+                onToggle={toggleGroup}
+                onSelect={setSelectedKey}
+                presetOptions={presetOptionsState.presets}
+                presetDefault={presetOptionsState.default}
+                presetId={presetId}
+                onPresetChange={setPresetId}
+              />
+              <span className={css.fieldHint}>{t('new.target.hint')}</span>
+            </div>
+
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('new.model')}</span>
+              <select
+                className={css.input}
+                value={modelKey}
+                aria-label={t('new.model')}
+                onChange={event => { setModelKey(event.target.value) }}
+              >
+                <option value="">{modelDefaultLabel}</option>
+                {modelLeaves.map(leaf => (
+                  <option key={leaf.key} value={leaf.key}>{leaf.label}</option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
+
+        <div className={css.field}>
+          {/* Toggle + mode dropdown share one row: .field is a column flex,
+              so without this wrapper the select would drop to its own line.
+              Unchecked → the dropdown is disabled (visible, not selectable). */}
+          <div className={css.scheduleRow}>
+            <label className={css.scheduleToggle}>
+              <input
+                type="checkbox"
+                checked={scheduleOn}
+                onChange={event => { setScheduleOn(event.target.checked) }}
+              />
+              <span>{t('new.schedule.enable')}</span>
+            </label>
+            <select
+              className={css.input}
+              style={{ width: '160px' }}
+              value={scheduleMode}
+              disabled={!scheduleOn}
+              aria-label={t('new.schedule.mode')}
+              onChange={event => {
+                setScheduleMode(event.target.value as 'cron' | 'interval' | 'once')
+                setError(undefined)
+              }}
+            >
+              <option value="cron">{t('detail.schedule.cron')}</option>
+              <option value="interval">{t('detail.schedule.modeInterval')}</option>
+              <option value="once">{t('detail.schedule.modeOnce')}</option>
+            </select>
+          </div>
+          {scheduleOn && (
+            <>
+              {scheduleMode === 'once' ? (
+                <>
+                  <div className={css.scheduleRow}>
+                    <input
+                      className={css.input}
+                      type="datetime-local"
+                      value={onceValue}
+                      aria-label={t('new.schedule.runAt')}
+                      onChange={event => { setOnceValue(event.target.value); setError(undefined) }}
+                    />
+                  </div>
+                  <span className={css.fieldHint}>{t('detail.schedule.nextRun')}</span>
+                </>
+              ) : scheduleMode === 'cron' ? (
+                <div className={css.scheduleRow}>
+                  <input
+                    className={`${css.input} ${css.scheduleInput}`}
+                    value={cron}
+                    placeholder="0 9 * * *"
+                    spellCheck={false}
+                    aria-label={t('new.schedule.cron')}
+                    onChange={event => { setCron(event.target.value); setError(undefined) }}
+                  />
+                  <select
+                    className={`${css.input} ${css.schedulePreset}`}
+                    value=""
+                    aria-label={t('detail.schedule.presets')}
+                    onChange={event => {
+                      const preset = event.target.value
+                      if (preset !== '') {
+                        setCron(preset)
+                        setError(undefined)
+                      }
+                    }}
+                  >
+                    <option value="">{t('detail.schedule.presets')}…</option>
+                    {SCHEDULE_PRESETS.map(preset => (
+                      <option key={preset.cron} value={preset.cron}>{t(preset.label)}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <>
+                  <div className={css.scheduleRow}>
+                    <input
+                      className={css.input}
+                      style={{ width: '120px' }}
+                      type="number"
+                      min={1}
+                      value={intervalValue}
+                      placeholder="如 302"
+                      aria-label={t('detail.schedule.interval')}
+                      onChange={event => { setIntervalValue(event.target.value); setError(undefined) }}
+                    />
+                    <select
+                      className={css.input}
+                      value={intervalUnit}
+                      aria-label={t('detail.schedule.unit')}
+                      onChange={event => { setIntervalUnit(event.target.value as '1' | '60' | '1440'); setError(undefined) }}
+                    >
+                      <option value="1">{t('detail.timeout.minutes')}</option>
+                      <option value="60">{t('detail.schedule.unit.hours')}</option>
+                      <option value="1440">{t('detail.schedule.unit.days')}</option>
+                    </select>
+                  </div>
+                  <span className={css.fieldHint}>{t('detail.schedule.intervalHint')}</span>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {error !== undefined && <p className={css.formError}>{error}</p>}
+
+        <footer className={css.modalFooter}>
+          <button type="button" className={css.ghostButton} onClick={onClose}>
+            {t('new.cancel')}
+          </button>
+          <button type="submit" className={css.primaryButton}>
+            {t('new.submit')}
+          </button>
+        </footer>
+      </form>
+    </div>
+  )
+}

@@ -1,0 +1,881 @@
+/**
+ * Auto-work styles. Scoped by the plugin's own data attributes so nothing
+ * leaks into the rest of the GUI; colors ride the dsh --dsw-* tokens so the
+ * board follows the active theme (light/dark and skins).
+ */
+
+/* --- center-column takeover (global rules, attribute-scoped) ----------------- */
+
+[data-pane='conversation'],
+[class*='centerCol'] {
+  position: relative;
+}
+
+/* The board container rides inside the conversation grid item as an extra
+   trailing child; hidden unless the board is active. */
+[data-dsh-autowork-view] {
+  position: absolute;
+  inset: 0;
+  display: none;
+  z-index: 60;
+  /* Opaque backdrop: the conversation subtree stays mounted under the view. */
+  background: var(--dsw-alias-bg-base);
+}
+
+/* The center column is single-occupant; the :not() guards keep sibling
+   panels (task board / ssh / this one) from fighting over visibility. */
+html[data-dsh-autowork-active]:not([data-dsh-ssh-active]):not([data-dsh-taskboard-active]) [data-dsh-autowork-view] {
+  display: block;
+}
+
+/* While the board is active, the conversation content underneath is hidden
+   (it stays mounted and stateful). */
+html[data-dsh-autowork-active]:not([data-dsh-ssh-active]):not([data-dsh-taskboard-active]) [data-pane='conversation'] > :not([data-dsh-autowork-view]),
+html[data-dsh-autowork-active]:not([data-dsh-ssh-active]):not([data-dsh-taskboard-active]) [class*='centerCol'] > :not([data-dsh-autowork-view]) {
+  display: none !important;
+}
+
+/* --- sidebar entry row ------------------------------------------------------- */
+
+.entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.entry:hover {
+  background: var(--dsw-specific-sidebar-nav-item-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.entry[data-active] {
+  background: var(--dsw-specific-sidebar-nav-item-active);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.entryIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.entryLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Collapsed rail: icon-only, centered, matching the shell's 56px rail. */
+[data-dsh-frame][data-sidebar-collapsed] .entry {
+  justify-content: center;
+  padding: 0;
+  width: 100%;
+}
+
+[data-dsh-frame][data-sidebar-collapsed] .entryLabel {
+  display: none;
+}
+
+/* --- board frame -------------------------------------------------------------- */
+
+.board {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 16px 16px;
+  gap: 12px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family);
+}
+
+.boardHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.boardTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+}
+
+.boardHint {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search {
+  flex: 0 1 260px;
+  min-width: 120px;
+  margin-left: auto;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsh-specific-input-major, var(--dsw-specific-input-major));
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  outline: none;
+}
+
+.search::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* --- status tab bar --------------------------------------------------------------- */
+
+.tabBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-inset, rgba(128, 128, 128, 0.06));
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabBar::-webkit-scrollbar { display: none; }
+
+.tabButton {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.tabButton:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-fill-minor, rgba(128, 128, 128, 0.12));
+}
+
+.tabButton[data-active] {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-elevated, var(--dsw-alias-bg-base));
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+}
+
+.tabLabel { font-weight: 500; }
+
+.tabCount {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-alias-fill-minor, rgba(128, 128, 128, 0.14));
+}
+
+.tabButton[data-active] .tabCount {
+  color: #fff;
+  background: var(--dsw-specific-button-primary, #4c8bf5);
+}
+
+.tabCount[data-tab='running'] { color: #4c8bf5; }
+.tabCount[data-tab='done'] { color: #3aa675; }
+.tabCount[data-tab='failed'] { color: #d4574e; }
+
+.tabButton[data-active] .tabCount[data-tab='running'],
+.tabButton[data-active] .tabCount[data-tab='done'],
+.tabButton[data-active] .tabCount[data-tab='failed'] {
+  color: #fff;
+  background: var(--dsw-specific-button-primary, #4c8bf5);
+}
+
+/* --- job card grid ------------------------------------------------------------------ */
+
+.cardGrid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-auto-rows: min-content;
+  gap: 10px;
+  align-content: start;
+  padding-right: 2px;
+}
+
+.jobCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  /* Grid blowout guard: a grid item's automatic min-width is its min-content
+     (the widest unbreakable line); long CJK/URL text would otherwise stretch
+     the card past its track (the 百分浏览器 overflow). */
+  min-width: 0;
+  min-height: 128px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-elevated, var(--dsw-alias-bg-base));
+  cursor: pointer;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+
+.jobCard:hover {
+  border-color: var(--dsw-alias-border-l1, var(--dsw-alias-border-l2));
+  transform: translateY(-1px);
+}
+
+.jobCard[data-status='running'] {
+  border-color: var(--dsw-alias-border-highlight, #4c8bf5);
+}
+
+.jobCard[data-status='archived'] { opacity: 0.72; }
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--dsw-alias-label-primary);
+  /* Wrap up to 2 lines; the rest is hidden (multi-line clamp). */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.jobCard[data-status='archived'] .cardTitle {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.cardExcerpt {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--dsw-alias-label-secondary);
+  /* Wrap up to 3 lines inside the taller card; the rest is hidden. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.cardMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.statusBadge[data-status='running'] {
+  color: #4c8bf5;
+  border-color: rgba(76, 139, 245, 0.5);
+}
+
+.statusBadge[data-status='done'] {
+  color: #3aa675;
+  border-color: rgba(58, 166, 117, 0.5);
+}
+
+.statusBadge[data-status='failed'] {
+  color: #d4574e;
+  border-color: rgba(212, 87, 78, 0.5);
+}
+
+.statusBadge[data-status='archived'] {
+  color: var(--dsw-alias-label-tertiary);
+  border-color: var(--dsw-alias-border-l2);
+  opacity: 0.75;
+}
+
+/* Kind chip: marks 普通任务 (command) jobs on cards and the detail header. */
+.kindBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid rgba(156, 106, 222, 0.5);
+  color: #9c6ade;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kindBadge[data-kind='agent'] {
+  border-color: var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* Kind selector (new-job modal): two radio-styled option cards. */
+.kindToggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.kindOption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.kindOption:hover { border-color: var(--dsw-alias-border-l1); }
+
+.kindOptionActive {
+  border-color: #4c8bf5;
+  color: #4c8bf5;
+}
+
+.kindOptionHint {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  font-weight: normal;
+}
+
+.jobCard[data-status='archived'] .cardTitle {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.listEmpty {
+  padding: 40px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* --- buttons -------------------------------------------------------------------- */
+
+.primaryButton {
+  flex: none;
+  padding: 6px 14px;
+  font-size: 13px;
+  border: none;
+  border-radius: 8px;
+  background: var(--dsw-specific-button-primary, #4c8bf5);
+  color: #fff;
+  cursor: pointer;
+}
+
+.primaryButton:hover { filter: brightness(1.05); }
+.primaryButton:disabled { opacity: 0.55; cursor: default; }
+
+.ghostButton {
+  flex: none;
+  padding: 6px 14px;
+  font-size: 13px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.ghostButton:hover { color: var(--dsw-alias-label-primary); }
+.ghostButton:disabled { opacity: 0.55; cursor: default; }
+
+.dangerButton {
+  flex: none;
+  padding: 6px 14px;
+  font-size: 13px;
+  border: 1px solid rgba(212, 87, 78, 0.5);
+  border-radius: 8px;
+  background: transparent;
+  color: #d4574e;
+  cursor: pointer;
+}
+
+.dangerButton:hover { background: rgba(212, 87, 78, 0.08); }
+
+.iconButton {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.iconButton:hover { background: var(--dsw-alias-bg-elevated, rgba(128, 128, 128, 0.12)); }
+
+.linkButton {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-border-highlight, #4c8bf5);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.linkButton:hover { text-decoration: underline; }
+
+/* --- modals / detail -------------------------------------------------------------- */
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 20px;
+}
+
+.modal,
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(600px, 100%);
+  max-height: calc(100vh - 40px);
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+  overflow-y: auto;
+}
+
+.modalTitle,
+.detailTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.detailHeader .detailTitle { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.detailBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.detailSection h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.detailText {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.promptBlock {
+  margin: 0;
+  padding: 10px;
+  font-family: var(--dsw-font-family-mono, monospace);
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-inset, rgba(128, 128, 128, 0.08));
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detailFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.detailMeta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* --- form fields ---------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.input {
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-input-major, transparent);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  outline: none;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.input:focus { border-color: var(--dsw-alias-border-highlight, #4c8bf5); }
+
+.input::placeholder { color: var(--dsw-alias-label-tertiary); }
+
+select.input { cursor: pointer; }
+
+.fieldHint {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* --- target tree picker -------------------------------------------------------------- */
+
+/* Compact by default, user-resizable via the bottom-right drag handle
+   (textarea-style: resize needs a non-visible overflow to work on a div). */
+.targetTree {
+  flex: 1 1 auto;
+  min-height: 84px;
+  height: 140px;
+  max-height: 420px;
+  overflow-y: auto;
+  resize: vertical;
+  padding: 4px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-input-major, transparent);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+}
+
+.targetGroup { margin-bottom: 2px; }
+
+.targetGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.targetGroupHeader:hover { background: var(--dsw-alias-fill-minor, rgba(127, 127, 127, 0.12)); }
+
+.targetCaret {
+  display: inline-block;
+  width: 12px;
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 0.12s ease;
+}
+
+.targetCaretOpen { transform: rotate(90deg); }
+
+.targetGroupName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.targetGroupCount {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.targetGroupBody { padding-left: 10px; }
+
+.targetRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 4px 6px 4px 8px;
+  font-size: 12.5px;
+  color: var(--dsw-alias-label-primary);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.targetRow:hover { background: var(--dsw-alias-fill-minor, rgba(127, 127, 127, 0.12)); }
+
+.targetRowDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--dsw-alias-label-tertiary);
+  border-radius: 50%;
+}
+
+.targetRowSelected { background: var(--dsw-alias-fill-selected, rgba(76, 139, 245, 0.16)); }
+
+.targetRowSelected .targetRowDot {
+  border-color: var(--dsw-alias-accent-major, #4c8bf5);
+  background: var(--dsw-alias-accent-major, #4c8bf5);
+}
+
+.targetRowLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Agent-preset dropdown riding the selected 新增会话 row (right-aligned,
+   clicking it must not disturb the row selection). */
+.presetSelect {
+  flex: none;
+  margin-left: auto;
+  max-width: 55%;
+  padding: 2px 6px;
+  font-size: 11.5px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-specific-input-major, var(--dsw-alias-bg-elevated, transparent));
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+}
+
+.presetSelect:focus { border-color: var(--dsw-alias-border-highlight, #4c8bf5); }
+
+/* Collapsed prompt preview: clamp to N text lines until 展开. */
+.promptBlockClamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+
+
+.formError {
+  margin: 0;
+  font-size: 12px;
+  color: #d4574e;
+}
+
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* --- schedule editor ---------------------------------------------------------------- */
+
+.scheduleToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+
+.scheduleRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.scheduleInput {
+  flex: 1;
+  font-family: var(--dsw-font-family-mono, monospace);
+}
+
+.scheduleInputInvalid {
+  border-color: #d4574e !important;
+}
+
+.schedulePreset {
+  flex: none;
+  width: auto;
+}
+
+.scheduleMeta {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* --- execution list ---------------------------------------------------------------- */
+
+.executionList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.executionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  flex-wrap: wrap;
+}
+
+.executionBadge {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid var(--dsw-alias-border-l2);
+}
+
+.executionBadge[data-result='succeeded'] { color: #3aa675; border-color: rgba(58, 166, 117, 0.5); }
+.executionBadge[data-result='failed'] { color: #d4574e; border-color: rgba(212, 87, 78, 0.5); }
+.executionBadge[data-result='cancelled'] { color: var(--dsw-alias-label-tertiary); }
+
+.executionTimes { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+
+.executionError {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: #d4574e;
+  word-break: break-all;
+}
+
+/* Command-run output: collapsible tail of the captured stdout/stderr. */
+.executionOutput {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.executionOutput summary {
+  cursor: pointer;
+  color: var(--dsw-alias-label-tertiary);
+  user-select: none;
+}
+
+.outputBlock {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-l2, rgba(128, 128, 128, 0.08));
+  border: 1px solid var(--dsw-alias-border-l2);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 220px;
+  overflow: auto;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* --- misc ---------------------------------------------------------------- */
+
+.cardSpinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid rgba(128, 128, 128, 0.35);
+  border-top-color: #4c8bf5;
+  animation: dsh-autowork-spin 0.9s linear infinite;
+}
+
+@keyframes dsh-autowork-spin {
+  to { transform: rotate(360deg); }
+}
+
+.confirmText {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+}
