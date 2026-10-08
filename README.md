@@ -18,9 +18,11 @@
 ## 环境要求
 
 - Node.js 22 或更高版本
-- DSH `>=0.1.5-rc.1 <0.2.0`
+- DSH `0.2.0-rc.2`
 - Web profile
 - 可注入的 `webServer`、`tools`、`agents`、`workosAuth`、`tenantPolicy` 和 `systemPrompt` 服务
+
+当前版本针对 DSH `0.2.0-rc.2` 的 Agent、工具、系统提示词和客户端服务接口构建。
 
 ## 安装
 
@@ -29,6 +31,8 @@
 ```bash
 npx @deepseek-ai/dsh plugin --profile web add "git+https://github.com/gepeiyu/dsh-auto-work.git"
 ```
+
+安装过程中若 pnpm 报告阻止了 git 插件的构建脚本，按命令输出的确切包名将其加入 profile 的 `pnpm-workspace.yaml` 的 `allowBuilds`，然后重新安装。
 
 仓库需要包含 `package.json`、`src` 和已构建的 `lib/client.js`。
 

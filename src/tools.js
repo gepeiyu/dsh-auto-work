@@ -12,7 +12,7 @@ export function registerAutoWorkTool(tools, { auth, engine }) {
     description: '管理当前登录用户自己的自动工作任务。支持创建、查看、立即运行、暂停、恢复和删除；任务只能使用当前用户有权访问的会话或工作空间。',
     timeoutMs: 15_000,
     parameters: {
-      action: { type: 'string', description: 'create、list、run、pause、resume 或 remove。' },
+      action: { type: 'string', required: true, description: 'create、list、run、pause、resume 或 remove。' },
       job_id: { type: 'string', description: '已有任务 ID。' },
       title: { type: 'string', description: '任务标题。' },
       kind: { type: 'string', description: '执行模式：agent 或 command。command 模式不使用大模型。' },

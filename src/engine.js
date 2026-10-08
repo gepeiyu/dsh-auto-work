@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { createJob, isDue, settleExecution, startExecution } from './core/model.js'
 import { nextIntervalMs, nextRunAtMs } from './core/schedule.js'
 import { assertTarget, ownerOf, sameOwner } from './policy.js'
@@ -144,7 +144,8 @@ export class AutoWorkEngine {
     const identity = ownerOf(job.owner)
     try {
       await assertTarget(this.#tenant, identity, job.target)
-      if (job.kind === 'command') return await this.#executeCommand(job, execution)
+      const workdir = this.#workdirForTarget(job.target)
+      if (job.kind === 'command') return await this.#executeCommand(job, execution, workdir)
       await withIdentity(this.#auth, identity, async () => {
         const agents = this.#ctx.agents
         let handle; let agent
@@ -152,22 +153,31 @@ export class AutoWorkEngine {
           agent = agents.get(job.target.sessionId)
           handle = { agent, dispose: async () => {} }
         } else if (job.target.sessionId) {
-          handle = await agents.resume({ resumeSessionId: job.target.sessionId })
+          const setup = await this.#presetSetupFor(job.target.sessionId)
+          handle = await agents.resume({
+            resumeSessionId: job.target.sessionId,
+            ...this.#agentOptions(),
+            ...(setup ? { setup } : {}),
+          })
           agent = handle.agent
         } else {
+          const preset = await this.#composePreset()
           handle = await agents.create({
             sessionId: sessionName(job.title, this.now()),
-            ...(job.target.workdir ? { meta: { cwd: job.target.workdir } } : {}),
+            ...this.#agentOptions(),
+            ...(workdir || preset?.meta ? { meta: { ...(workdir ? { cwd: workdir } : {}), ...(preset?.meta ?? {}) } } : {}),
+            ...(preset?.setup ? { setup: preset.setup } : {}),
           })
           agent = handle.agent
         }
+        await this.#attachWorkspace(job.target, agent.session.id)
         await this.#store.mutate(jobs => {
           const current = jobs.find(item => item.id === job.id)
           if (!current) return undefined
           const executions = current.executions.map(item => item.id === execution.id ? { ...item, sessionId: agent.session.id } : item)
           return { jobs: jobs.map(item => item.id === job.id ? { ...item, executions, updatedAt: this.now() } : item), value: true }
         })
-        const message = { id: randomUUID(), role: 'user', content: [{ type: 'text', text: job.prompt }], source: { kind: 'user' } }
+        const message = createUserMessage({ content: [{ type: 'text', text: job.prompt }], source: { kind: 'user' } })
         this.#flights.set(message.id, { jobId: job.id, executionId: execution.id, sessionId: agent.session.id, agent, handle })
         agent.followup(message)
       })
@@ -176,14 +186,79 @@ export class AutoWorkEngine {
     }
   }
 
-  async #executeCommand(job, execution) {
+  #workdirForTarget(target = {}) {
+    if (target.workdir) return target.workdir
+    if (!target.workspaceId) return ''
+    const registry = this.#ctx.workspaceRegistry
+    const workspace = registry?.get?.(target.workspaceId)
+    if (workspace?.path) return workspace.path
+    const rows = typeof registry?.list === 'function' ? registry.list() : []
+    return rows.find(row => row?.id === target.workspaceId)?.path ?? ''
+  }
+
+  #agentOptions() {
+    const selection = this.#ctx.agentDefaultModel?.currentSelection?.()
+    if (!selection?.provider || !selection?.model) return {}
+    return { agentOptions: { provider: selection.provider, model: selection.model, ...(selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {}) } }
+  }
+
+  async #composePreset() {
+    const presets = this.#ctx.agentPresets
+    if (typeof presets?.resolve !== 'function' || typeof presets?.mount !== 'function') return undefined
+    const resolved = await presets.resolve()
+    if (!resolved?.id) return undefined
+    return {
+      meta: { agentPreset: resolved.id },
+      setup: agentCtx => presets.mount(agentCtx, resolved.id),
+    }
+  }
+
+  async #presetSetupFor(sessionId) {
+    const presets = this.#ctx.agentPresets
+    if (typeof presets?.resolve !== 'function' || typeof presets?.mount !== 'function') return undefined
+    let recorded
+    try {
+      const query = this.#ctx.sessionQuery
+      if (typeof query?.readSession === 'function') {
+        const snapshot = await query.readSession(sessionId)
+        for (const event of [...(snapshot?.events ?? [])].reverse()) {
+          if (event?.type === 'agent-preset/selected' && typeof event.data?.agentPreset === 'string') {
+            recorded = event.data.agentPreset
+            break
+          }
+        }
+        recorded ??= snapshot?.session?.agentPreset
+      }
+      if (!recorded) recorded = (await this.#ctx.sessionPersistence?.stat?.(sessionId))?.header?.agentPreset
+    } catch {}
+    try {
+      const resolved = await presets.resolve(recorded)
+      if (!resolved?.id) return undefined
+      return agentCtx => presets.mount(agentCtx, resolved.id)
+    } catch {
+      return undefined
+    }
+  }
+
+  async #attachWorkspace(target = {}, sessionId) {
+    const registry = this.#ctx.workspaceRegistry
+    if (!registry) return
+    const workdir = this.#workdirForTarget(target)
+    const workspace = (target.workspaceId ? registry.get?.(target.workspaceId) : undefined)
+      ?? (workdir && typeof registry.resolveByPath === 'function' ? await registry.resolveByPath(workdir) : undefined)
+      ?? (workdir && typeof registry.create === 'function' ? await registry.create(workdir) : undefined)
+      ?? (typeof registry.list === 'function' ? registry.list().find(row => row?.id === target.workspaceId) : undefined)
+    await workspace?.attachSession?.(sessionId)
+  }
+
+  async #executeCommand(job, execution, workdir = '') {
     const command = typeof job.command === 'string' ? job.command.trim() : ''
     if (!command) return await this.#settle(job.id, execution.id, 'failed', 'command is empty')
     const args = splitCommandArgs(job.args ?? '')
     const output = []
     await new Promise(resolve => {
       let child
-      try { child = spawn(command, args, { cwd: job.target.workdir || undefined, env: process.env }) } catch (error) {
+      try { child = spawn(command, args, { cwd: workdir || undefined, env: process.env }) } catch (error) {
         void this.#settle(job.id, execution.id, 'failed', error instanceof Error ? error.message : String(error)).then(resolve); return
       }
       child.stdout?.on('data', chunk => output.push(String(chunk)))

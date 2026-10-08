@@ -21,14 +21,17 @@ export function apply(ctx, config = {}) {
     const tenant = services.tenantPolicy
     if (!auth || !tenant) throw new Error('dsh-auto-work requires workosAuth and tenantPolicy')
     const store = new JobStore(config.storePath)
-    const engine = new AutoWorkEngine({ ctx: services, auth, tenant, store })
-    engine.start()
     const resources = {
       workspaceRegistry: ctx.get?.('workspaceRegistry', false),
+      agentDefaultModel: ctx.get?.('agentDefaultModel', false),
+      agentPresets: ctx.get?.('agentPresets', false),
       sessions: ctx.get?.('sessions', false),
       sessionPersistence: ctx.get?.('sessionPersistence', false),
+      sessionQuery: ctx.get?.('sessionQuery', false),
       sessionController: ctx.get?.('sessionController', false),
     }
+    const engine = new AutoWorkEngine({ ctx: { ...services, ...resources }, auth, tenant, store })
+    engine.start()
     const routeDisposers = makeRoutes({ auth, tenant, engine, resources }).map(route => services.webServer.register(route))
     const toolDisposer = registerAutoWorkTool(services.tools, { auth, engine })
     let sectionDisposer

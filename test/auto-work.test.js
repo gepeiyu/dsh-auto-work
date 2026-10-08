@@ -85,7 +85,7 @@ test('scheduled agent execution is settled from session events', async () => {
       async create() {
         agent = { session: { id: 'session-created' }, followup(message) {
           events[0]?.({ id: 'session-created' }, { type: 'user/message', data: { id: message.id } })
-          events[0]?.({ id: 'session-created' }, { type: 'turn/end', data: { reason: { kind: 'stop' } } })
+          events[0]?.({ id: 'session-created' }, { type: 'turn/end', data: { reason: { kind: 'completed' } } })
         } }
         return { agent, dispose: async () => {} }
       },
@@ -103,6 +103,81 @@ test('scheduled agent execution is settled from session events', async () => {
     const saved = (await engine.list(owner)).find(item => item.id === job.id)
     assert.equal(saved.status, 'archived')
     assert.equal(saved.executions[0].result, 'succeeded')
+  } finally {
+    await engine.dispose()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('new agent runs persist the selected DSH 0.2 preset and model options', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-auto-work-'))
+  const store = new JobStore(join(dir, 'jobs.json'))
+  const created = []
+  const mounted = []
+  const ctx = {
+    agentDefaultModel: { currentSelection: () => ({ provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'high' }) },
+    agentPresets: {
+      resolve: async (id) => ({ id: id ?? 'web' }),
+      mount: async (_agentCtx, id) => { mounted.push(id) },
+    },
+    agents: {
+      async create(options) {
+        created.push(options)
+        return { agent: { session: { id: 'session-preset' }, followup() {} }, dispose: async () => {} }
+      },
+    },
+  }
+  const auth = { identityContext: { run(_identity, callback) { return callback() } } }
+  const tenant = { assertWorkspacePath: (_identity, path) => path }
+  const engine = new AutoWorkEngine({ ctx, auth, tenant, store, now: () => 1_700_000_000_000 })
+  const owner = { organizationId: 'org', userId: 'alice' }
+  try {
+    const job = await engine.create({ title: 'preset', prompt: 'run', runAt: 1_699_999_999_000, target: {} }, owner)
+    assert.equal(await engine.run(job.id, owner), true)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    assert.equal(created.length, 1)
+    assert.deepEqual(created[0].meta, { agentPreset: 'web' })
+    assert.deepEqual(created[0].agentOptions, { provider: 'deepseek', model: 'deepseek-chat', reasoningEffort: 'high' })
+    assert.equal(typeof created[0].setup, 'function')
+    await created[0].setup({})
+    assert.deepEqual(mounted, ['web'])
+  } finally {
+    await engine.dispose()
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('resumed sessions restore the preset recorded in the DSH 0.2 session log', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-auto-work-'))
+  const store = new JobStore(join(dir, 'jobs.json'))
+  const resumed = []
+  const mounted = []
+  const ctx = {
+    sessionQuery: { readSession: async () => ({ session: {}, events: [{ type: 'agent-preset/selected', data: { agentPreset: 'coding' } }] }) },
+    agentPresets: {
+      resolve: async (id) => ({ id: id ?? 'web' }),
+      mount: async (_agentCtx, id) => { mounted.push(id) },
+    },
+    agents: {
+      async resume(options) {
+        resumed.push(options)
+        return { agent: { session: { id: 'session-existing' }, followup() {} }, dispose: async () => {} }
+      },
+    },
+  }
+  const auth = { identityContext: { run(_identity, callback) { return callback() } } }
+  const tenant = { assertSessionLocation() {} }
+  const engine = new AutoWorkEngine({ ctx, auth, tenant, store, now: () => 1_700_000_000_000 })
+  const owner = { organizationId: 'org', userId: 'alice' }
+  try {
+    const job = await engine.create({ title: 'resume', prompt: 'continue', runAt: 1_699_999_999_000, target: { sessionId: 'session-existing' } }, owner)
+    assert.equal(await engine.run(job.id, owner), true)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    assert.equal(resumed.length, 1)
+    assert.equal(resumed[0].resumeSessionId, 'session-existing')
+    assert.equal(typeof resumed[0].setup, 'function')
+    await resumed[0].setup({})
+    assert.deepEqual(mounted, ['coding'])
   } finally {
     await engine.dispose()
     await rm(dir, { recursive: true, force: true })
@@ -136,6 +211,7 @@ test('auto_work tool creates command jobs without an Agent prompt', async () => 
     auth: { currentIdentity: () => ({ organizationId: 'org', userId: 'alice' }) },
     engine: { create: async (input, identity) => { created = { input, identity }; return { id: 'command-job', ...input } } },
   })
+  assert.deepEqual(registered[0].parameters.required, ['action'])
   const result = await registered[0].execute({ action: 'create', title: '同步文件', kind: 'command', command: '/bin/sh', args: '-c "echo ok"', cron: '0 9 * * *' })
   assert.equal(result.kind, 'created')
   assert.equal(created.input.kind, 'command')
