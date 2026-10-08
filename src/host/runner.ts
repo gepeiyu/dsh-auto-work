@@ -124,7 +124,7 @@ export class TimerRunner {
     // Manual-run requests (tool / web UI) deserve a snappier response than
     // the schedule tick: a cheap 5s poll that only reads the request field.
     this.requestTimer = setInterval(() => { void this.pollRequests() }, 5_000)
-    this.ctx.effect(() => () => { this.stop() }, 'dsh-auto-work: runner')
+    this.ctx.effect(() => async () => { await this.dispose() }, 'dsh-auto-work: runner')
     this.ctx.on('session/event', (session, event) => { this.onSessionEvent(session, event) })
   }
 
@@ -326,6 +326,7 @@ export class TimerRunner {
       this.executeCommand(job, execution)
       return
     }
+    let messageId: string | undefined
     try {
       const handle = await this.connectAgent(job)
       const agent: HostAgent = handle.agent
@@ -334,6 +335,7 @@ export class TimerRunner {
         content: [{ type: 'text', text: job.prompt.trim() !== '' ? job.prompt : job.title }],
         source: { kind: 'user' },
       })
+      messageId = message.id
       this.inFlight.set(message.id, {
         jobId: job.id,
         executionId: execution.id,
@@ -346,8 +348,16 @@ export class TimerRunner {
           ? this.now() + job.timeoutMs
           : undefined,
       })
-      agent.followup(message)
+      // DSH 0.2 requires a persistence barrier for detached deliveries. The
+      // initiator-free boundary prevents a timer callback from being owned by
+      // whichever Agent happened to create the timer.
+      const flushed = await this.ctx.agents.withoutInitiator(async () => {
+        agent.followup(message)
+        return this.ctx.sessions.flush(agent.session)
+      })
+      if (!flushed) throw new Error('Session persistence did not acknowledge the scheduled run')
     } catch (error) {
+      if (messageId !== undefined) this.inFlight.delete(messageId)
       await this.settle(job.id, execution.id, 'failed', error instanceof Error ? error.message : String(error))
     }
   }

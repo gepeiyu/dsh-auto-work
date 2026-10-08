@@ -75,6 +75,8 @@ export interface HostAgentHandle {
 
 /** The `agents` registry service (subset of the host `AgentRegistry`). */
 export interface HostAgentRegistry {
+  /** Run detached scheduler work without inheriting an Agent initiator. */
+  withoutInitiator<T>(operation: () => T): T
   /**
    * The live agent already running under an id, if any (no ownership
    * transfer; the host owns its lifetime). Mirrors the api-proxy resolver's
@@ -223,6 +225,12 @@ export interface HostWorkspaceRegistry {
   list?(): readonly HostWorkspace[]
 }
 
+/** Durable session store surface required by DSH 0.2 for delivery barriers. */
+export interface HostSessionStore {
+  /** Resolve only after all registered persistence listeners acknowledge the log. */
+  flush(session: HostSession): Promise<boolean>
+}
+
 /** One immutable entry in the host session log. */
 export interface HostSessionEvent {
   readonly type: string
@@ -291,6 +299,8 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     /** The host agent registry; required via `inject`. */
     agents: HostAgentRegistry
+    /** Durable session store; required by the scheduler delivery barrier. */
+    sessions: HostSessionStore
     /** The host webserver route surface; required via `inject`. */
     webServer: HostWebServer
   }
@@ -307,6 +317,7 @@ declare module '@deepseek-ai/cordis' {
  */
 export interface HostPluginContext {
   agents: HostAgentRegistry
+  sessions: HostSessionStore
   webServer: HostWebServer
   /** The host default-model service, when mounted ('agentDefaultModel'). */
   get(service: 'agentDefaultModel'): HostAgentDefaultModel | undefined
@@ -320,7 +331,7 @@ export interface HostPluginContext {
   get(service: 'sessionQuery'): HostSessionQuery | undefined
   get(service: string): unknown
   on(event: 'session/event', listener: (session: HostSession, event: HostSessionEvent) => void): () => void
-  effect(setup: () => () => void, label?: string): void
+  effect(setup: () => () => void | Promise<void>, label?: string): void
   tools?: { register(def: unknown): () => void }
   systemPrompt: {
     section(section: { name: string; order: number; text: string }): () => void

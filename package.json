@@ -1,7 +1,7 @@
 {
   "name": "dsh-auto-work",
-  "description": "Host-resident scheduled-jobs engine for the dsh web GUI: a sidebar entry plus a scheduled-jobs board with per-job project/workspace + session targeting (or new session in the default workspace when both are blank), cron schedules, and real execution through dsh sessions (session.prompt). Hot-pluggable —mounted via the web profile bundles, no dsh source changes.",
-  "version": "0.8.0",
+  "description": "Host-resident scheduled-jobs engine for the dsh web GUI: a sidebar entry plus a scheduled-jobs board with per-job project/workspace + session targeting (or new session in the default workspace when both are blank), cron schedules, and real execution through DSH 0.2 Agent.followup sessions. Hot-pluggable —mounted via the web profile bundles, no dsh source changes.",
+  "version": "0.8.1",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
