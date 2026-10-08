@@ -129,6 +129,7 @@ export function registerTimerTool(tools: { register(def: unknown): () => void },
     parameters: {
       action: {
         type: 'string',
+        required: true,
         description: 'One of: create, list, update, pause, resume, archive, restart, remove, run. Required.',
       },
       job_id: {

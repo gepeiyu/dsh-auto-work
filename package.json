@@ -1,7 +1,7 @@
 {
   "name": "dsh-auto-work",
   "description": "Host-resident scheduled-jobs engine for the dsh web GUI: a sidebar entry plus a scheduled-jobs board with per-job project/workspace + session targeting (or new session in the default workspace when both are blank), cron schedules, and real execution through dsh sessions (session.prompt). Hot-pluggable —mounted via the web profile bundles, no dsh source changes.",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -27,7 +27,7 @@
   "dsh": {
     "compatibility": {
       "dshReleases": {
-        "0.1.5-rc.2": "compatible"
+        "0.2.0-rc.2": "compatible"
       }
     },
     "bundle": {
@@ -42,23 +42,38 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-client-connection": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-ui-settings": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-system-prompt": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-tools": "^0.1.5-rc.2",
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-connection": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-session": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
     "react": "^18.2.0"
   },
   "dependencies": {
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
     "schemastery": "^3.18.0"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-client-connection": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-locale": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-ui-settings": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-system-prompt": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-tools": "^0.1.5-rc.2",
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh-agent": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-connection": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-locale": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-invariants": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-ptc-runtime": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-sandbox": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-sandbox-policy": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-scope": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-session": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-session-projection": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-user-approval": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-util-values": "^0.2.0-rc.2",
     "@tsdown/css": "^0.22.14",
     "@types/node": "^22.20.1",
     "@types/react": "~18.3.1",
@@ -66,7 +81,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "schemastery": "^3.18.0",
-    "tsdown": "0.22.2",
+    "tsdown": "0.22.14",
     "typescript": "~5.7.2"
   },
   "files": [

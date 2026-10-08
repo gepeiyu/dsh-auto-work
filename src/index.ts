@@ -38,10 +38,10 @@ export interface Config {
   enabled?: boolean
 }
 
-export const Config: z<Config> = z.object({
+export const Config = z.object({
   announceToAgent: z.boolean().default(true),
   enabled: z.boolean().default(true),
-})
+}) as unknown as z<Config>
 
 /** Schema default, re-read for hand-built test contexts. */
 const DEFAULT_ANNOUNCE = true

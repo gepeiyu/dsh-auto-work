@@ -4,14 +4,14 @@
  * package build self-contained while a composed DSH profile supplies the
  * real implementations at runtime. Field shapes mirror `@deepseek-ai/dsh-agent`,
  * `@deepseek-ai/dsh-tools`, and the webserver's route surface as of
- * dsh 0.1.5-rc.2.
+ * dsh 0.2.0-rc.2.
  * @module dsh-auto-work/host-contracts
  */
 
 import type z from 'schemastery'
 
 /**
- * Minimal JSON value face. dsh 0.1.2 stopped re-exporting `JsonValue` from
+ * Minimal JSON value face. DSH 0.2 no longer re-exports `JsonValue` from
  * `@deepseek-ai/dsh-tools`; keeping a structural copy avoids a dependency on
  * the package that now owns it (`@deepseek-ai/dsh-util-values`).
  */
@@ -48,7 +48,7 @@ export interface HostUserMessage {
 }
 
 /**
- * Why an active agent is cancelled. dsh 0.1.5 replaced the free-text cause
+ * Why an active agent is cancelled. DSH 0.2 uses a structured cause instead of a free-text
  * string with this stable intent enum (`AgentCancelCause`); the runner's
  * timeout path speaks `{ kind: 'hook', reason }` (an automated component
  * cancelling with a reason, no user present).
@@ -142,7 +142,7 @@ export interface HostAgentPresetRow {
 
 /**
  * The `sessionQuery` service (subset of the host `SessionQueryEngine`, new in
- * the cold-read role dsh 0.1.5 carved out of `sessionPersistence`): the full
+ * the cold-read role DSH 0.2 exposes alongside `sessionPersistence`): the full
  * raw event log plus header of one session, cold.
  */
 export interface HostSessionQuery {
@@ -154,7 +154,7 @@ export interface HostSessionQuery {
 }
 
 /**
- * The `sessionPersistence` service (subset): dsh 0.1.5 removed `inspect` —
+ * The `sessionPersistence` service (subset): DSH 0.2 removed `inspect` —
  * header reads now go through `stat`, event-level cold reads through
  * `sessionQuery` (see {@link HostSessionQuery}).
  */
@@ -282,8 +282,8 @@ export interface HostSettingsSectionHooks<T> {
 /**
  * The `settings` service (subset of the host `SettingsProvider`): namespace
  * registration for optional-settings consumers. Mirrors
- * `SettingsProvider.installSection` as of dsh 0.1.5-rc.2 — the same five-param
- * shape dsh 0.1.2 introduced (`installSettingsSection` helper long gone;
+ * `SettingsProvider.installSection` as of dsh 0.2.0-rc.2 — the same five-param
+ * shape DSH 0.2 uses (`installSettingsSection` helper long gone;
  * the hooks' `validate?` member stays optional and unused here).
  */
 export interface HostSettings {
@@ -329,7 +329,7 @@ declare module '@deepseek-ai/cordis' {
     agents: HostAgentRegistry
     /** The host webserver route surface; required via `inject`. */
     webServer: HostWebServer
-    /** The host settings provider; required via `inject` (dsh 0.1.2+). */
+    /** The host settings provider; required via `inject` (DSH 0.2+). */
     settings: HostSettings
   }
   interface Events {
@@ -356,7 +356,7 @@ export interface HostPluginContext {
   get(service: 'agentPresets'): HostAgentPresets | undefined
   /** The session persistence service, when mounted ('sessionPersistence'). */
   get(service: 'sessionPersistence'): HostSessionPersistence | undefined
-  /** The cold session-read service, when mounted ('sessionQuery', dsh 0.1.5+). */
+  /** The cold session-read service, when mounted ('sessionQuery', DSH 0.2+). */
   get(service: 'sessionQuery'): HostSessionQuery | undefined
   get(service: string): unknown
   on(event: 'session/event', listener: (session: HostSession, event: HostSessionEvent) => void): () => void

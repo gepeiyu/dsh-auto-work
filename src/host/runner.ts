@@ -17,6 +17,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type {
   HostAgent, HostAgentHandle, HostAgentRegistry, HostPluginContext,
   HostSession, HostSessionEvent, HostUserMessage, HostWorkspaceRegistry,
@@ -156,7 +157,7 @@ export class TimerRunner {
       if (flight.timeoutAt === undefined || this.now() < flight.timeoutAt) continue
       this.inFlight.delete(flight.messageId)
       try {
-        // dsh 0.1.5 cancel cause is an intent enum, not free text: a scheduled
+        // DSH 0.2 cancel cause is an intent enum, not free text: a scheduled
         // run's timeout is an automated component cancelling with a reason.
         flight.agent?.cancel({ kind: 'hook', reason: 'dsh-auto-work: run timed out' })
       } catch (error) {
@@ -329,12 +330,10 @@ export class TimerRunner {
       const handle = await this.connectAgent(job)
       const agent: HostAgent = handle.agent
       await this.recordSessionId(job.id, execution.id, agent.session.id)
-      const message: HostUserMessage = {
-        id: randomUUID(),
-        role: 'user',
+      const message: HostUserMessage = createUserMessage({
         content: [{ type: 'text', text: job.prompt.trim() !== '' ? job.prompt : job.title }],
         source: { kind: 'user' },
-      }
+      })
       this.inFlight.set(message.id, {
         jobId: job.id,
         executionId: execution.id,
@@ -539,7 +538,7 @@ export class TimerRunner {
    * Compose a RESUMED session's recorded preset: the last
    * `agent-preset/selected` event wins over the creation header
    * (`resolveSessionPreset` semantics), read through the cold-read services —
-   * dsh 0.1.5 split them: `sessionQuery.readSession` carries the raw event
+   * DSH 0.2 splits them: `sessionQuery.readSession` carries the raw event
    * log, `sessionPersistence.stat` the header. A session that recorded none
    * falls back to the roster default. Rejection means "compose nothing" — the
    * caller resumes bare rather than abandoning the pinned conversation.

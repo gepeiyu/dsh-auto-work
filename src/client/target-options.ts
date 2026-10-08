@@ -14,7 +14,7 @@
  * blank); each session leaf pins that conversation (sessionId set).
  */
 /**
- * Minimal client-context face. Structural on purpose: dsh 0.1.2 no longer
+ * Minimal client-context face. Structural on purpose: the DSH 0.2 client runtime
  * publishes `@deepseek-ai/dsh-client-runtime`, and every read below is a
  * defensive cast anyway — the real shape is the ambient cordis augmentation
  * at runtime.

@@ -18,7 +18,7 @@ DSH Web GUI 的常驻定时任务插件，运行在 DSH Web 宿主进程中，�
 
 - Node.js `>=22`
 - pnpm
-- DSH `0.1.5-rc.2` 或兼容版本
+- DSH `0.2.0-rc.2`
 - DSH Web profile
 
 ## 安装
@@ -37,7 +37,7 @@ npx @deepseek-ai/dsh web
 npx @deepseek-ai/dsh plugin --profile web add "link:/path/to/dsh-auto-work"
 ```
 
-安装后重启 DSH Web 服务。
+当前版本针对 DSH `0.2.0-rc.2` 的 Agent、工具、preset、系统提示词和客户端服务接口构建。安装后重启 DSH Web 服务。
 
 ## 开发命令
 
