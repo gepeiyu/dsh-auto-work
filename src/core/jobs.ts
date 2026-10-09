@@ -41,6 +41,9 @@ export interface ExecutionRecord {
   id: string
   /** The dsh session that ran this attempt; absent until creation resolves. */
   sessionId: string | undefined
+  /** Durable correlation with the DSH inbox, including failures before user/message. */
+  messageId?: string
+  turn?: number
   /** How the session was targeted for this attempt ('command' = direct spawn). */
   targeting: 'specified-session' | 'new-session' | 'command'
   /** When the run started (ms epoch). */

@@ -1,4 +1,6 @@
 node_modules/
+.codegraph/
+.cursor/rules/codegraph.mdc
 *.tmp
 .DS_Store
 .tmp-shots/

@@ -75,6 +75,7 @@ interface InFlight {
   messageId: string
   /** Whether the session log consumed our message yet. */
   consumed: boolean
+  turn?: number
   /** The live agent (for timeout cancellation). */
   agent: HostAgent | undefined
   /** Configured limit (ms) when the job carries a timeout; absent = unlimited. */
@@ -107,6 +108,7 @@ export class TimerRunner {
   private timer: ReturnType<typeof setInterval> | undefined
   private requestTimer: ReturnType<typeof setInterval> | undefined
   private disposed = false
+  private recovery: Promise<void> | undefined
   /** Agent handles for pinned sessions, kept alive across runs (lark precedent). */
   private readonly pinnedHandles = new Map<string, HostAgentHandle>()
 
@@ -116,16 +118,103 @@ export class TimerRunner {
     this.now = deps.now ?? (() => Date.now())
   }
 
+  /** Recover once before accepting work; never replay an orphaned execution. */
+  private initialize(): Promise<void> {
+    return this.recovery ??= this.recoverInterruptedRuns()
+  }
+
+  private async recoverInterruptedRuns(): Promise<void> {
+    for (const job of await this.store.load()) {
+      if (job.status !== 'running') continue
+      const execution = job.executions.at(-1)
+      if (execution === undefined || execution.endedAt !== undefined) continue
+      let ended: HostSessionEvent | undefined
+      if (execution.sessionId !== undefined && (execution.messageId !== undefined || execution.turn !== undefined)) {
+        try {
+          const snapshot = await this.ctx.get('sessionQuery')?.readSession(execution.sessionId)
+          let consumed = false
+          ended = snapshot?.events.find(event => {
+            if (event.type === 'user/message'
+              && (event.data as { id?: string } | undefined)?.id === execution.messageId) consumed = true
+            return isTurnEndEvent(event)
+              && (execution.turn !== undefined ? event.data.turn === execution.turn : consumed)
+          })
+        } catch (error) {
+          console.warn('[dsh-auto-work] cannot read interrupted execution:', error)
+        }
+      }
+      const agent = execution.sessionId === undefined ? undefined : this.ctx.agents.get?.(execution.sessionId)
+      if (ended === undefined && agent !== undefined && execution.messageId !== undefined) {
+        this.inFlight.set(execution.messageId, {
+          jobId: job.id, executionId: execution.id,
+          sessionId: execution.sessionId!, messageId: execution.messageId,
+          consumed: execution.turn !== undefined, turn: execution.turn, agent,
+          timeoutMs: job.timeoutMs,
+          timeoutAt: job.timeoutMs !== undefined && job.timeoutMs > 0 ? execution.startedAt + job.timeoutMs : undefined,
+        })
+        continue
+      }
+      const error = ended !== undefined && isTurnEndEvent(ended)
+        ? turnErrorDetail(ended.data)
+        : 'Execution tracking was interrupted by a host restart; no live scheduled execution remains'
+      await this.store.mutate(jobs => {
+        const current = jobs.find(row => row.id === job.id)
+        if (current?.status !== 'running' || current.executions.at(-1)?.id !== execution.id) return undefined
+        let recovered = settleExecution(current, execution.id, error === '' ? 'succeeded' : 'failed', ended?.time ?? this.now(), error || undefined)
+        // Old imported nextRunAt values must not immediately replay a job
+        // whose interrupted attempt was just accounted for.
+        if (recovered.schedule?.enabled && !isOneShotRule(recovered.schedule)
+          && recovered.schedule.nextRunAt !== undefined && recovered.schedule.nextRunAt <= this.now()) {
+          recovered = withSchedule(recovered, { nextRunAt: scheduleNextMs(recovered.schedule, this.now()) }, this.now())
+        }
+        return { jobs: jobs.map(row => row.id === job.id ? recovered : row), result: true }
+      })
+    }
+  }
+
+  /** Restore a cold session's last model before assembly needs {{model}}. */
+  private async sessionModel(sessionId: string): Promise<{ provider: string; model: string } | undefined> {
+    try {
+      const snapshot = await this.ctx.get('sessionQuery')?.readSession(sessionId)
+      for (const event of [...(snapshot?.events ?? [])].reverse()) {
+        const data = event.data as { provider?: unknown; model?: unknown; header?: { config?: { provider?: unknown; model?: unknown } } } | undefined
+        const route = event.type === 'model/selection' ? data
+          : event.type === 'request/header' ? data?.header?.config : undefined
+        if (typeof route?.provider === 'string' && route.provider !== ''
+          && typeof route.model === 'string' && route.model !== '') return { provider: route.provider, model: route.model }
+      }
+    } catch (error) {
+      console.warn('[dsh-auto-work] cannot read the session model; using the default:', error)
+    }
+    const defaults = this.ctx.get('agentDefaultModel')
+    return defaults === undefined ? undefined : trySelection(defaults)
+  }
+
   /** Start the ticker + the session-event watcher. */
   start(): void {
     if (this.disposed) return
+    // Observe inbox claims before the first tick. In DSH 0.2, a prompt
+    // assembly failure closes a claimed turn without logging user/message.
+    this.ctx.on('agent/inbox/claimed', ({ agent, message, turn }) => {
+      const flight = this.inFlight.get(message.id)
+      if (flight === undefined || flight.sessionId !== agent.session.id) return
+      flight.consumed = true
+      flight.turn = turn
+      void this.recordCorrelation(flight.jobId, flight.executionId, { turn })
+    })
+    this.ctx.on('agent/inbox/discarded', ({ agent, message }) => {
+      const flight = this.inFlight.get(message.id)
+      if (flight === undefined || flight.sessionId !== agent.session.id) return
+      this.inFlight.delete(message.id)
+      void this.settle(flight.jobId, flight.executionId, 'failed', 'Scheduled message was discarded before execution')
+    })
+    this.ctx.on('session/event', (session, event) => { this.onSessionEvent(session, event) })
     void this.tick()
     this.timer = setInterval(() => { void this.tick() }, 60_000)
     // Manual-run requests (tool / web UI) deserve a snappier response than
     // the schedule tick: a cheap 5s poll that only reads the request field.
     this.requestTimer = setInterval(() => { void this.pollRequests() }, 5_000)
     this.ctx.effect(() => async () => { await this.dispose() }, 'dsh-auto-work: runner')
-    this.ctx.on('session/event', (session, event) => { this.onSessionEvent(session, event) })
   }
 
   /** Stop the ticker (idempotent; pinned handles disposed with the plugin). */
@@ -200,6 +289,7 @@ export class TimerRunner {
    */
   async tick(): Promise<number> {
     if (this.disposed) return 0
+    await this.initialize()
     await this.checkTimeouts()
     const jobs = await this.store.load()
     let fired = 0
@@ -279,6 +369,8 @@ export class TimerRunner {
    */
   async requestRun(jobId: string, extraPrompt?: string): Promise<boolean> {
     if (this.disposed) return false
+    await this.initialize()
+    if (this.disposed) return false
     const outcome = await this.store.mutate(current => {
       const job = current.find(candidate => candidate.id === jobId)
       if (job === undefined || job.status === 'running' || job.status === 'archived') return undefined
@@ -316,7 +408,7 @@ export class TimerRunner {
       }
     })
     if (outcome === undefined) return false
-    void this.execute(outcome.job, outcome.execution)
+    void this.ctx.agents.withoutInitiator(() => this.execute(outcome.job, outcome.execution))
     return true
   }
 
@@ -336,6 +428,7 @@ export class TimerRunner {
         source: { kind: 'user' },
       })
       messageId = message.id
+      await this.recordCorrelation(job.id, execution.id, { messageId })
       this.inFlight.set(message.id, {
         jobId: job.id,
         executionId: execution.id,
@@ -456,11 +549,12 @@ export class TimerRunner {
         console.warn('[dsh-auto-work] preset composition for pinned session failed; resuming bare:', error)
       }
       try {
-        // An explicit per-job model selection overrides the session's own;
-        // without one the resume keeps the session's persisted selection.
+        // Resume does not seed AgentOptions from the request history in DSH
+        // 0.2. Restore the last route explicitly, then use the host default.
+        const modelSelection = job.modelSelection ?? await this.sessionModel(pinnedId)
         const handle = await agents.resume({
           resumeSessionId: pinnedId,
-          ...job.modelSelection === undefined ? {} : { agentOptions: { ...job.modelSelection } },
+          ...modelSelection === undefined ? {} : { agentOptions: { ...modelSelection } },
           ...resumeSetup === undefined ? {} : { setup: resumeSetup },
         })
         this.pinnedHandles.set(pinnedId, handle)
@@ -563,8 +657,9 @@ export class TimerRunner {
         const snapshot = await query.readSession(sessionId)
         for (let index = snapshot.events.length - 1; index >= 0; index -= 1) {
           const event = snapshot.events[index]
-          if (event?.type === 'agent-preset/selected' && typeof event.data?.agentPreset === 'string') {
-            recorded = event.data.agentPreset
+          const data = event?.data as { agentPreset?: unknown } | undefined
+          if (event?.type === 'agent-preset/selected' && typeof data?.agentPreset === 'string') {
+            recorded = data.agentPreset
             break
           }
         }
@@ -599,7 +694,8 @@ export class TimerRunner {
         if (id === flight.messageId) flight.consumed = true
         continue
       }
-      if (isTurnEndEvent(event) && flight.consumed) {
+      if (isTurnEndEvent(event) && flight.consumed
+        && (flight.turn === undefined || flight.turn === event.data.turn)) {
         const detail = turnErrorDetail(event.data)
         void this.settle(flight.jobId, flight.executionId, detail === '' ? 'succeeded' : 'failed', detail === '' ? undefined : detail)
         this.inFlight.delete(flight.messageId)
@@ -622,6 +718,10 @@ export class TimerRunner {
 
   /** Record which session an execution landed in (the 'started' event). */
   private async recordSessionId(jobId: string, executionId: string, sessionId: string): Promise<void> {
+    await this.recordCorrelation(jobId, executionId, { sessionId })
+  }
+
+  private async recordCorrelation(jobId: string, executionId: string, patch: Pick<Partial<ExecutionRecord>, 'sessionId' | 'messageId' | 'turn'>): Promise<void> {
     await this.store.mutate(current => {
       const job = current.find(candidate => candidate.id === jobId)
       if (job === undefined) return undefined
@@ -631,7 +731,7 @@ export class TimerRunner {
               ...candidate,
               updatedAt: this.now(),
               executions: candidate.executions.map(execution =>
-                execution.id === executionId ? { ...execution, sessionId } : execution),
+                execution.id === executionId ? { ...execution, ...patch } : execution),
             }
           : candidate),
         result: true,

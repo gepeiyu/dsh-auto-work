@@ -149,7 +149,7 @@ export interface HostSessionQuery {
   /** Read one session's header and complete raw event log. */
   readSession(sessionId: string): Promise<{
     readonly session: { readonly agentPreset?: string }
-    readonly events: ReadonlyArray<{ readonly type: string, readonly data?: { readonly agentPreset?: string } }>
+    readonly events: ReadonlyArray<HostSessionEvent>
   }>
 }
 
@@ -235,6 +235,7 @@ export interface HostSessionStore {
 export interface HostSessionEvent {
   readonly type: string
   readonly data: unknown
+  readonly time?: number
 }
 
 /** The `turn/end` payload fields the runner settles on. */
@@ -258,7 +259,8 @@ export function isTurnEndEvent(event: HostSessionEvent): event is HostSessionEve
 
 /** Render a failed turn's reason as one operator-readable line. */
 export function turnErrorDetail(data: TurnEndData): string {
-  if (data.reason.kind !== 'error') return ''
+  if (data.reason.kind === 'completed') return ''
+  if (data.reason.kind !== 'error') return `turn ended: ${data.reason.kind}`
   const error = data.reason.error
   if (error === undefined) return 'turn failed'
   return error.message ?? error.code ?? 'turn failed'
@@ -331,6 +333,8 @@ export interface HostPluginContext {
   get(service: 'sessionQuery'): HostSessionQuery | undefined
   get(service: string): unknown
   on(event: 'session/event', listener: (session: HostSession, event: HostSessionEvent) => void): () => void
+  on(event: 'agent/inbox/claimed', listener: (payload: { agent: HostAgent; message: HostUserMessage; turn: number }) => void): () => void
+  on(event: 'agent/inbox/discarded', listener: (payload: { agent: HostAgent; message: HostUserMessage }) => void): () => void
   effect(setup: () => () => void | Promise<void>, label?: string): void
   tools?: { register(def: unknown): () => void }
   systemPrompt: {

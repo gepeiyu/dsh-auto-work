@@ -53,6 +53,8 @@ function isExecutionShape(value: unknown): value is ExecutionRecord {
   const entry = value as Record<string, unknown>
   if (typeof entry.id !== 'string') return false
   if (entry.sessionId !== undefined && typeof entry.sessionId !== 'string') return false
+  if (entry.messageId !== undefined && typeof entry.messageId !== 'string') return false
+  if (entry.turn !== undefined && (!Number.isSafeInteger(entry.turn) || (entry.turn as number) < 0)) return false
   if (entry.targeting !== 'specified-session' && entry.targeting !== 'new-session' && entry.targeting !== 'command') return false
   if (typeof entry.startedAt !== 'number') return false
   if (entry.endedAt !== undefined && typeof entry.endedAt !== 'number') return false
