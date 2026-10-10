@@ -14,13 +14,11 @@ import type { SessionsControllerFace } from '../core/controller.ts'
 
 /** The sessions-service members this adapter consumes (ISessions subset). */
 export interface SessionsServiceShape {
-  /** ObservableSnapshot of the list rows + current selection. */
+  /** DSH 0.2 catalog; the main view owns a retained reference. */
   list: {
-    getSnapshot(): { current: string | undefined }
+    getSnapshot(): { byId: Record<string, { id: string; retainedBy: Record<string, number> }> }
     subscribe(fn: () => void): () => void
   }
-  /** Select a session as current (navigates the conversation view). */
-  open(id: string): void
   /**
    * Re-pull the list from the host. A wire-pump entry point the public
    * ISessions face deliberately omits — present on the concrete service,
@@ -29,12 +27,18 @@ export interface SessionsServiceShape {
   refresh?(): Promise<void>
 }
 
+/** DSH 0.2 view navigation is separate from the session catalog. */
+export interface WorkspaceNavigationShape {
+  openSession(id: string): void
+}
+
 /**
  * Adapt the resolved sessions service to SessionsControllerFace.
  * @param service - the plain service object behind `ctx.sessions`.
+ * @param navigation - `ctx.uiWorkspace`, which selects and reveals the main view.
  * @returns the navigation face for RemoteBoardController.
  */
-export function sessionsFaceOf(service: SessionsServiceShape): SessionsControllerFace {
+export function sessionsFaceOf(service: SessionsServiceShape, navigation: WorkspaceNavigationShape): SessionsControllerFace {
   // Bind the optional member ONCE, on the service object: the concrete
   // service's refresh is a prototype method whose `this` must be the service
   // itself — calling the captured bare function throws "Cannot read
@@ -47,14 +51,14 @@ export function sessionsFaceOf(service: SessionsServiceShape): SessionsControlle
     list: {
       getSnapshot: () => {
         const snapshot = service.list.getSnapshot()
-        return { current: snapshot.current }
+        return { current: Object.values(snapshot.byId).find(row => (row.retainedBy.mainView ?? 0) > 0)?.id }
       },
       subscribe: (fn: () => void) => {
         return service.list.subscribe(fn)
       },
     },
     open: (id: string) => {
-      service.open(id)
+      navigation.openSession(id)
     },
     // Forward the list re-pull when the service offers it (headlessly
     // created run sessions are invisible to a stale mirror; see

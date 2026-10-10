@@ -13,8 +13,9 @@ import type {
   ControllerSnapshot, SessionsControllerFace,
 } from '../core/controller.ts'
 import type { JobModelSelection, JobRecord, NewJobInput, SessionTarget } from '../core/jobs.ts'
+import { t } from './locales.ts'
 
-/** The sessions navigation face (ctx.sessions.open for transcript jumps). */
+/** The navigation face (ctx.uiWorkspace.openSession for transcript jumps). */
 export type { SessionsControllerFace }
 
 /** Poll cadence for the ledger mirror. */
@@ -190,20 +191,18 @@ export class RemoteBoardController {
 
   /** Jump to an execution's session transcript. */
   openSession(sessionId: string): void {
-    // The board overlays the conversation pane (single-occupant center
-    // column): opening a session while the board stays active looks like
-    // "nothing happened". Hand the column back FIRST, then navigate.
-    this.closeJob()
-    this.closeBoard()
     // A scheduled run's session is created headlessly and may not be in the
-    // browser's list mirror yet — sessions.open() throws on unknown ids, so
-    // refresh the list when the face offers it, and never let a navigation
-    // failure escape into the click handler.
+    // browser's catalog yet. Refresh before selecting it. Keep the board
+    // visible on failure so the previous conversation cannot look like the
+    // execution's target.
     const open = (): void => {
       try {
         this.sessions.open(sessionId)
+        this.closeJob()
+        this.closeBoard()
       } catch (error) {
         console.warn('[dsh-auto-work] open session failed:', sessionId, error)
+        globalThis.alert?.(t('detail.openSessionFailed', { sessionId }))
       }
     }
     const refresh = this.sessions.refresh

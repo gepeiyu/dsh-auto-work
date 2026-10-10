@@ -12,17 +12,17 @@
  * plugin must not take the GUI down.
  */
 import { RemoteBoardController } from './remote-controller.ts'
-import { sessionsFaceOf, type SessionsServiceShape } from './sessions-face.ts'
+import { sessionsFaceOf, type SessionsServiceShape, type WorkspaceNavigationShape } from './sessions-face.ts'
 import { mountBoard } from './board-mount.tsx'
 import { mountSidebarEntry } from './sidebar-entry.ts'
 import { listTargetOptions } from './target-options.ts'
 
 /** Required services (fiber inject waiting — the runtime must be up first). */
-export const inject = ['slots', 'sessions']
+export const inject = ['slots', 'sessions', 'uiWorkspace']
 
 /**
  * Mount the auto-work board.
- * @param ctx - client root context (services: sessions).
+ * @param ctx - client root context (services: sessions and uiWorkspace).
  */
 export function apply(ctx: unknown): void {
   // Resolve the sessions SERVICE once through the inject declaration. The
@@ -30,21 +30,8 @@ export function apply(ctx: unknown): void {
   // service members (list/open/refresh) straight off it throws "cannot get
   // property ... without inject", and an eager read at apply time fails the
   // whole web boot. Everything downstream works on the plain service object.
-  const ctxTyped = ctx as { sessions?: SessionsServiceShape }
-  const sessions = ctxTyped.sessions
-
-  // Fallback when sessions service is missing (e.g., when dsh-web plugin is removed)
-  const sessionsFace = sessions !== undefined
-    ? sessionsFaceOf(sessions)
-    : {
-        list: {
-          getSnapshot: () => ({ current: undefined }),
-          subscribe: () => () => {},
-        },
-        open: (_id: string) => {
-          console.warn('[dsh-auto-work] sessions.open called but sessions service is unavailable')
-        },
-      }
+  const ctxTyped = ctx as { sessions: SessionsServiceShape; uiWorkspace: WorkspaceNavigationShape }
+  const sessionsFace = sessionsFaceOf(ctxTyped.sessions, ctxTyped.uiWorkspace)
 
   const controller = new RemoteBoardController(sessionsFace)
   controller.start()
