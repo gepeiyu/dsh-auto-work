@@ -19,6 +19,8 @@
  * defensive cast anyway — the real shape is the ambient cordis augmentation
  * at runtime.
  */
+import { t } from './locales.ts'
+
 interface ClientContext {
   readonly [key: string]: unknown
 }
@@ -232,7 +234,7 @@ export async function listTargetOptions(ctx: ClientContext): Promise<TargetGroup
   })
 
   const groups: TargetGroup[] = [
-    toGroup('default', '默认工作空间', ''),
+    toGroup('default', t('new.target.workspaceAny'), ''),
   ]
 
   const seen = new Set<string>([''])

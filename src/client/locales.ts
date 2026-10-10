@@ -1,6 +1,6 @@
 /**
- * Auto-work copy: zh-first dictionaries with an English fallback, selected
- * by the document language. Kept dependency-free so the DOM-injected entry
+ * Auto-work copy: complete English, Chinese and Japanese dictionaries,
+ * selected by the DSH document language. Kept dependency-free so the DOM-injected entry
  * row and the standalone board tree share one tiny lookup.
  */
 
@@ -47,6 +47,7 @@ export const zh = {
   'new.target.workspaceAny': '默认工作区',
   'new.target.session': '会话',
   'new.target.sessionNew': '每次执行新建会话',
+  'new.target.newSession': '新增会话',
   'new.target.hint': '项目和会话都留空时，在默认工作空间发起新对话',
   'new.preset': '预设',
   'new.preset.followDefault': '默认预设',
@@ -114,6 +115,7 @@ export const zh = {
   'detail.schedule.modeOnce': '一次性',
   'detail.schedule.editNextRun': '修改下次执行时间',
   'detail.schedule.interval': '间隔',
+  'detail.schedule.intervalPlaceholder': '如 302',
   'detail.schedule.unit': '时间单位',
   'detail.schedule.unit.hours': '小时',
   'detail.schedule.unit.days': '天',
@@ -139,6 +141,9 @@ export const zh = {
   'card.scheduled': '定时',
   'card.kind.command': '命令',
   'time.justNow': '刚刚',
+  'time.unit.minute': '分钟',
+  'time.unit.hour': '小时',
+  'time.unit.day': '天',
 } satisfies Record<string, string>
 
 /** en dictionary, complete against the zh key set. */
@@ -184,6 +189,7 @@ export const en: Record<keyof typeof zh, string> = {
   'new.target.workspaceAny': 'Default workspace',
   'new.target.session': 'Session',
   'new.target.sessionNew': 'New session per run',
+  'new.target.newSession': 'New session',
   'new.target.hint': 'With both blank, each run starts a new conversation in the default workspace',
   'new.preset': 'Preset',
   'new.preset.followDefault': 'Default preset',
@@ -251,6 +257,7 @@ export const en: Record<keyof typeof zh, string> = {
   'detail.schedule.modeOnce': 'One-time',
   'detail.schedule.editNextRun': 'Edit next run',
   'detail.schedule.interval': 'Interval',
+  'detail.schedule.intervalPlaceholder': 'e.g. 302',
   'detail.schedule.unit': 'Time unit',
   'detail.schedule.unit.hours': 'hours',
   'detail.schedule.unit.days': 'days',
@@ -276,15 +283,199 @@ export const en: Record<keyof typeof zh, string> = {
   'card.scheduled': 'scheduled',
   'card.kind.command': 'command',
   'time.justNow': 'just now',
+  'time.unit.minute': 'minute',
+  'time.unit.hour': 'hour',
+  'time.unit.day': 'day',
+}
+
+/** Japanese dictionary, complete against the shared key set. */
+export const ja: Record<keyof typeof zh, string> = {
+  'entry.label': '定期タスク',
+  'board.title': '定期タスク × Agent',
+  'board.close': 'チャットに戻る',
+  'board.new': '新規タスク',
+  'board.search': 'タスクを絞り込む…',
+  'board.empty': 'タスクはまだありません',
+  'board.runs': '回実行',
+  'board.updated': '更新日時',
+  'board.created': '作成日時',
+  'board.hint': 'スケジュールに従って Agent セッションを自動実行',
+  'board.tabs': 'タスクの状態',
+  'board.tab.all': 'すべて',
+  'board.tab.idle': '待機中',
+  'board.tab.running': '実行中',
+  'board.tab.done': '成功',
+  'board.tab.failed': '失敗',
+  'board.tab.archived': 'アーカイブ済み',
+  'board.emptyTab': 'この分類にタスクはありません',
+  'new.title': 'タイトル',
+  'new.titlePlaceholder': '定期的に実行する内容を一行で入力',
+  'new.description': '説明',
+  'new.descriptionPlaceholder': '背景、対象範囲、完了条件（任意）',
+  'new.kind': 'タスクの種類',
+  'new.kind.agent': 'AI Agent タスク',
+  'new.kind.agentHint': 'Agent セッションでプロンプトを実行します',
+  'new.kind.command': '通常タスク（コマンド）',
+  'new.kind.commandHint': 'AI を使わずコマンドを直接実行します（利用枠の消費なし）',
+  'new.command': 'コマンド',
+  'new.commandPlaceholder': '実行ファイル（pwsh / python / node など）または絶対パス',
+  'new.args': '引数',
+  'new.argsPlaceholder': 'スペース区切りの引数（引用符で囲むこともできます）',
+  'new.workdir': '作業ディレクトリ（任意）',
+  'new.workdirPlaceholder': 'コマンドの実行先（空欄の場合は既定値）',
+  'new.commandRequired': '通常タスクにはコマンドが必要です',
+  'new.prompt': '実行プロンプト',
+  'new.promptPlaceholder': 'Agent に送る指示（空欄の場合はタイトルを使用）',
+  'new.target': '対象セッション',
+  'new.target.workspace': 'プロジェクト（ワークスペース）',
+  'new.target.workspaceAny': '既定のワークスペース',
+  'new.target.session': 'セッション',
+  'new.target.sessionNew': '実行ごとに新規セッションを作成',
+  'new.target.newSession': '新規セッション',
+  'new.target.hint': '両方とも空欄の場合、既定のワークスペースで新しい会話を開始します',
+  'new.preset': 'プリセット',
+  'new.preset.followDefault': '既定のプリセット',
+  'new.model': 'モデル',
+  'new.model.followSession': '既存セッションのモデルを使用',
+  'new.model.followDefault': '既定のモデル',
+  'new.schedule': 'スケジュール（任意）',
+  'new.schedule.enable': '定期実行を有効にする',
+  'new.schedule.cron': 'Cron 式',
+  'new.schedule.mode': '実行方式',
+  'new.schedule.runAt': '実行日時',
+  'new.schedule.runAt.invalid': '一回限りのタスクの実行日時を選択してください',
+  'new.submit': '作成',
+  'new.cancel': 'キャンセル',
+  'new.required': 'タイトルを入力してください',
+  'detail.title': 'タスクの詳細',
+  'detail.close': '閉じる',
+  'detail.prompt': '実行プロンプト',
+  'detail.command': '実行コマンド',
+  'detail.kind.agent': 'Agent',
+  'detail.kind.command': 'コマンド',
+  'detail.execution.command': 'コマンド',
+  'detail.execution.exitCode': '終了コード',
+  'detail.output': '実行出力',
+  'detail.description': '説明',
+  'detail.execution': '実行履歴',
+  'detail.noExecution': 'まだ実行されていません',
+  'detail.run': '今すぐ実行',
+  'detail.rerun': '再実行',
+  'detail.delete': '削除',
+  'detail.reset': '待機状態に戻す',
+  'detail.archive': 'アーカイブ',
+  'detail.restart': 'タスクを再開',
+  'detail.archivedHint': 'アーカイブ済み：再開するまで定期実行と手動実行は停止されます',
+  'detail.status.archived': 'アーカイブ済み',
+  'detail.status.idle': '待機中',
+  'detail.viewSession': 'セッションを表示',
+  'detail.openSessionFailed': 'セッション {sessionId} を開けません。ページを更新して再試行してください。',
+  'detail.edit': '編集',
+  'detail.save': '保存',
+  'detail.editCancel': 'キャンセル',
+  'detail.executionStarted': '開始',
+  'detail.executionEnded': '終了',
+  'detail.result.succeeded': '成功',
+  'detail.result.failed': '失敗',
+  'detail.result.cancelled': 'キャンセル済み',
+  'detail.result.running': '実行中',
+  'detail.target.session': '指定セッション',
+  'detail.target.new': '新規セッション',
+  'detail.target.default': '既定のワークスペース · 新規セッション',
+  'detail.target.preset': 'プリセット',
+  'detail.execution.showAll': 'すべて表示（{count} 件）',
+  'detail.execution.collapse': '折りたたむ',
+  'detail.prompt.view': 'すべて表示',
+  'detail.prompt.collapse': '折りたたむ',
+  'detail.target.workspace': 'プロジェクト',
+  'delete.title': 'タスクを削除',
+  'delete.confirm': '「{name}」を削除しますか？この操作は取り消せません。',
+  'delete.ok': '削除',
+  'delete.cancel': 'キャンセル',
+  'detail.schedule': '定期実行',
+  'detail.schedule.enable': '定期実行を有効にする',
+  'detail.schedule.cron': 'Cron 式',
+  'detail.schedule.modeInterval': '固定間隔',
+  'detail.schedule.modeOnce': '一回限り',
+  'detail.schedule.editNextRun': '次回の実行日時を変更',
+  'detail.schedule.interval': '間隔',
+  'detail.schedule.intervalPlaceholder': '例：302',
+  'detail.schedule.unit': '時間単位',
+  'detail.schedule.unit.hours': '時間',
+  'detail.schedule.unit.days': '日',
+  'detail.schedule.intervalHint': '前回の実行時刻から一定間隔で実行します。再起動や一時停止で周期はずれません',
+  'detail.schedule.interval.invalid': '間隔には 0 より大きい整数を入力してください',
+  'detail.schedule.every': '{n} {unit}ごと',
+  'detail.schedule.presets': 'プリセット',
+  'detail.schedule.preset.daily9': '毎日 09:00',
+  'detail.schedule.preset.hourly': '毎時間',
+  'detail.schedule.preset.tenMin': '10 分ごと',
+  'detail.schedule.preset.weeklyMon9': '毎週月曜日 09:00',
+  'detail.schedule.nextRun': '次回実行',
+  'detail.schedule.lastTriggered': '前回実行',
+  'detail.schedule.invalid': 'Cron 式が無効です',
+  'detail.schedule.notScheduled': '未設定',
+  'detail.schedule.dueSoon': 'まもなく実行',
+  'detail.schedule.skip': '一回スキップ',
+  'detail.schedule.skipHint': '今回をスキップし、次回の実行日時を {time} に変更します',
+  'detail.timeout': '実行タイムアウト',
+  'detail.timeout.hint': '制限時間を超えた実行はキャンセルされ、失敗として記録されます。空欄または 0 は無制限です',
+  'detail.timeout.unlimited': '無制限',
+  'detail.timeout.minutes': '分',
+  'card.scheduled': '定期実行',
+  'card.kind.command': 'コマンド',
+  'time.justNow': 'たった今',
+  'time.unit.minute': '分',
+  'time.unit.hour': '時間',
+  'time.unit.day': '日',
 }
 
 /** The dictionary key union. */
 export type AutoWorkKey = keyof typeof zh
 
+export type AutoWorkLocale = 'en' | 'zh' | 'ja'
+
+/** Resolve regional tags too; unsupported languages use English. */
+export function currentLocale(): AutoWorkLocale {
+  const lang = typeof document !== 'undefined' ? document.documentElement.lang : 'zh'
+  const base = lang.trim().toLowerCase().split(/[-_]/)[0]
+  return base === 'zh' || base === 'ja' ? base : 'en'
+}
+
+/** Subscribe to DSH's document-language changes without owning its preference. */
+export function subscribeLocale(listener: () => void): () => void {
+  if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return () => {}
+  let previous = currentLocale()
+  const observer = new MutationObserver(() => {
+    const next = currentLocale()
+    if (next === previous) return
+    previous = next
+    listener()
+  })
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] })
+  return () => { observer.disconnect() }
+}
+
 /** Active dictionary, picked by the document language at call time. */
 export function dictionary(): Record<AutoWorkKey, string> {
-  const lang = typeof document !== 'undefined' ? document.documentElement.lang : 'zh'
-  return lang.toLowerCase().startsWith('en') ? en : zh
+  return { en, zh, ja }[currentLocale()]
+}
+
+/** Date and time formatting follows the UI language and the local timezone. */
+export function formatDateTime(ms: number): string {
+  return new Date(ms).toLocaleString(currentLocale())
+}
+
+/** Localized compact timestamps; negative values mean elapsed time. */
+export function formatRelativeTime(ms: number, now = Date.now()): string {
+  const future = ms > now
+  const minutes = future ? Math.ceil((ms - now) / 60000) : Math.floor((now - ms) / 60000)
+  if (minutes < 1) return t('time.justNow')
+  if (minutes >= 1440) return new Date(ms).toLocaleDateString(currentLocale())
+  const unit = minutes < 60 ? 'minute' : 'hour'
+  const value = minutes < 60 ? minutes : Math.floor(minutes / 60)
+  return new Intl.RelativeTimeFormat(currentLocale(), { style: 'short', numeric: 'always' })
+    .format(future ? value : -value, unit)
 }
 
 /** Translate a key with optional {name} template params. */
@@ -292,7 +483,7 @@ export function t(key: AutoWorkKey, params?: Record<string, string>): string {
   let text: string = dictionary()[key]
   if (params !== undefined) {
     for (const [name, value] of Object.entries(params)) {
-      text = text.replaceAll(`{${name}}`, value)
+      text = text.replaceAll(`{${name}}`, () => value)
     }
   }
   return text

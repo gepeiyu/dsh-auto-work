@@ -6,12 +6,12 @@
  * directly); the header keeps the search filter, new-job, and a
  * back-to-chat escape.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { selectedJobOf, type ControllerSnapshot } from '../../core/controller.ts'
 import { jobKind, type JobRecord, type JobStatus } from '../../core/jobs.ts'
 import type { TargetGroup, ModelOptions, PresetOptions } from '../target-options.ts'
 import type { BoardControllerFace } from '../controller-face.ts'
-import { t, type AutoWorkKey } from '../locales.ts'
+import { currentLocale, formatDateTime, formatRelativeTime, subscribeLocale, t, type AutoWorkKey } from '../locales.ts'
 import css from '../board.module.css'
 import { BOARD_TABS, jobsOfTab, tabCounts, TAB_LABEL_KEY, type BoardTab } from './tabs.ts'
 import { NewJobModal } from './NewJobModal.tsx'
@@ -51,6 +51,7 @@ function matchesFilter(job: JobRecord, filter: string): boolean {
 
 /** Board component; subscribes to the controller snapshot. */
 export function TimerBoard({ controller, targetOptions, modelOptions, presetOptions }: { controller: BoardControllerFace; targetOptions: () => Promise<TargetGroup[]>; modelOptions: () => Promise<ModelOptions>; presetOptions: () => Promise<PresetOptions> }) {
+  useSyncExternalStore(subscribeLocale, currentLocale, currentLocale)
   const [snapshot, setSnapshot] = useState(controller.getSnapshot())
   useEffect(
     () => controller.subscribe(() => setSnapshot(controller.getSnapshot())),
@@ -138,7 +139,7 @@ export function TimerBoard({ controller, targetOptions, modelOptions, presetOpti
               {job.schedule?.enabled === true && (
                 <span
                   title={job.schedule.nextRunAt !== undefined
-                    ? `${t('card.scheduled')} · ${new Date(job.schedule.nextRunAt).toLocaleString()}`
+                    ? `${t('card.scheduled')} · ${formatDateTime(job.schedule.nextRunAt)}`
                     : t('card.scheduled')}
                 >
                   ⏰ {job.schedule.nextRunAt !== undefined ? formatTime(job.schedule.nextRunAt) : t('card.scheduled')}
@@ -176,18 +177,5 @@ export function TimerBoard({ controller, targetOptions, modelOptions, presetOpti
 
 /** Compact relative/absolute time label (future instants count forward). */
 export function formatTime(ms: number): string {
-  const date = new Date(ms)
-  const now = Date.now()
-  if (ms > now) {
-    const ahead = Math.ceil((ms - now) / 60000)
-    if (ahead < 1) return t('time.justNow')
-    if (ahead < 60) return `+${ahead}m`
-    if (ahead < 60 * 24) return `+${Math.floor(ahead / 60)}h`
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-  }
-  const minutes = Math.floor((now - ms) / 60000)
-  if (minutes < 1) return t('time.justNow')
-  if (minutes < 60) return `${minutes}m`
-  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h`
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  return formatRelativeTime(ms)
 }

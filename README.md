@@ -10,6 +10,7 @@ DSH Web GUI 的常驻定时任务插件，运行在 DSH Web 宿主进程中，�
 - 暂停、恢复、归档、重启、删除和立即执行
 - 执行状态与历史记录
 - Web GUI 任务面板
+- 英语、简体中文、日语界面，跟随 DSH 设置中的语言选择即时切换
 - `auto_work` 模型工具
 - 回环 HTTP API
 - 持久化任务台账：`~/.dsh/auto-work/jobs.json`
@@ -38,6 +39,8 @@ npx @deepseek-ai/dsh plugin --profile web add "link:/path/to/dsh-auto-work"
 ```
 
 当前版本针对 DSH `0.2.0-rc.2` 的 Agent、工具、preset、系统提示词和客户端服务接口构建。安装后重启 DSH Web 服务。
+
+在 DSH 的语言设置中选择 English、中文或日本語即可切换任务面板及侧栏文案。日期和相对时间也随语言切换；未保存的表单内容会保留。不支持的语言回退到英语。
 
 ## 开发命令
 

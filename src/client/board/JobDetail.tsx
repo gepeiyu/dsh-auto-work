@@ -14,7 +14,7 @@ import { isIntervalRule, isOneShotRule, isSchedulable, isValidCron, nextRunAtMs,
 import { commandLine, jobKind, timeoutLabel, type ExecutionRecord, type JobRecord, type ScheduleRule } from '../../core/jobs.ts'
 import type { ModelOptions, PresetOptions, TargetGroup } from '../target-options.ts'
 import type { BoardControllerFace } from '../controller-face.ts'
-import { t, type AutoWorkKey } from '../locales.ts'
+import { currentLocale, formatDateTime, t, type AutoWorkKey } from '../locales.ts'
 import css from '../board.module.css'
 import { formatTime, STATUS_LABEL_KEY } from './TimerBoard.tsx'
 import { DEFAULT_TARGET_GROUPS, intervalDraftMinutes, leavesOf, modelLeavesOf, TargetTree } from './NewJobModal.tsx'
@@ -84,9 +84,12 @@ const SCHEDULE_PRESETS: ReadonlyArray<{ cron: string; label: AutoWorkKey }> = [
 
 /** Human label for a fixed-interval rule: 每 N 分钟 / 小时 / 天. */
 function intervalLabel(minutes: number): string {
-  if (minutes % 1440 === 0) return t('detail.schedule.every', { n: String(minutes / 1440), unit: t('detail.schedule.unit.days') })
-  if (minutes % 60 === 0) return t('detail.schedule.every', { n: String(minutes / 60), unit: t('detail.schedule.unit.hours') })
-  return t('detail.schedule.every', { n: String(minutes), unit: t('detail.timeout.minutes') })
+  const unit = minutes % 1440 === 0 ? 'day' : minutes % 60 === 0 ? 'hour' : 'minute'
+  const count = minutes / (unit === 'day' ? 1440 : unit === 'hour' ? 60 : 1)
+  const label = currentLocale() === 'en' && count !== 1
+    ? t(`time.unit.${unit}`) + 's'
+    : t(`time.unit.${unit}`)
+  return t('detail.schedule.every', { n: String(count), unit: label })
 }
 
 /** Read-mode label for a schedule rule: the cron expression or a prettified interval. */
@@ -95,7 +98,7 @@ function scheduleLabel(schedule: ScheduleRule | undefined): string {
   // One-shot: the persisted nextRunAt is the whole schedule — show it inline.
   if (isOneShotRule(schedule)) {
     return schedule.nextRunAt !== undefined
-      ? `${t('detail.schedule.modeOnce')} · ${new Date(schedule.nextRunAt).toLocaleString()}`
+      ? `${t('detail.schedule.modeOnce')} · ${formatDateTime(schedule.nextRunAt)}`
       : t('detail.schedule.modeOnce')
   }
   return isIntervalRule(schedule) ? intervalLabel(schedule.intervalMinutes!) : schedule.cron
@@ -205,7 +208,7 @@ export function JobDetail({ controller, job, targetOptions, modelOptions, preset
   const [modelKey, setModelKey] = useState('')
   const [presetOptionsState, setPresetOptionsState] = useState<PresetOptions>({ presets: [] })
   const [presetDraft, setPresetDraft] = useState(current.preset ?? '')
-  const [error, setError] = useState<string | undefined>(undefined)
+  const [error, setError] = useState<AutoWorkKey | undefined>(undefined)
   // Standalone next-run edit (read mode): interval/one-shot jobs only, saved
   // straight through PATCH nextRunAt — the unified editor owns cron/interval.
   const [nextRunDraft, setNextRunDraft] = useState('')
@@ -283,11 +286,11 @@ export function JobDetail({ controller, job, targetOptions, modelOptions, preset
     if (scheduleModeDraft === 'interval'
       ? (scheduleEnabledDraft && draftInterval === undefined)
       : (cron === '' ? scheduleEnabledDraft : !isValidCron(cron))) {
-      setError(scheduleModeDraft === 'interval' ? t('detail.schedule.interval.invalid') : t('detail.schedule.invalid'))
+      setError(scheduleModeDraft === 'interval' ? 'detail.schedule.interval.invalid' : 'detail.schedule.invalid')
       return
     }
     if (isCommand && commandDraft.trim() === '') {
-      setError(t('new.commandRequired'))
+      setError('new.commandRequired')
       return
     }
     setError(undefined)
@@ -366,10 +369,10 @@ export function JobDetail({ controller, job, targetOptions, modelOptions, preset
     ? t('detail.schedule.notScheduled')
     : nextRunAt <= Date.now()
       ? t('detail.schedule.dueSoon')
-      : new Date(nextRunAt).toLocaleString()
+      : formatDateTime(nextRunAt)
   const lastLabel = current.schedule?.lastTriggeredAt === undefined
     ? '—'
-    : new Date(current.schedule.lastTriggeredAt).toLocaleString()
+    : formatDateTime(current.schedule.lastTriggeredAt)
   const draftCronValid = cronDraft.trim() !== '' && isValidCron(cronDraft.trim())
   const draftNextRun = !scheduleEnabledDraft
     ? undefined
@@ -543,7 +546,7 @@ export function JobDetail({ controller, job, targetOptions, modelOptions, preset
                 const modelDefaultLabel = selectedTarget.sessionId !== ''
                   ? t('new.model.followSession')
                   : modelOptionsState.default !== undefined
-                    ? `${modelOptionsState.default.provider} · ${modelOptionsState.default.model}（${t('new.model.followDefault')}）`
+                    ? `${modelOptionsState.default.provider} · ${modelOptionsState.default.model} (${t('new.model.followDefault')})`
                     : t('new.model.followDefault')
                 const known = modelKey === '' || leaves.some(item => item.key === modelKey)
                 return (
@@ -641,7 +644,7 @@ export function JobDetail({ controller, job, targetOptions, modelOptions, preset
                         type="number"
                         min={1}
                         value={intervalValueDraft}
-                        placeholder="如 302"
+                        placeholder={t('detail.schedule.intervalPlaceholder')}
                         aria-label={t('detail.schedule.interval')}
                         onChange={event => { setIntervalValueDraft(event.target.value); setError(undefined) }}
                       />
@@ -662,7 +665,7 @@ export function JobDetail({ controller, job, targetOptions, modelOptions, preset
                 {scheduleEnabledDraft && (
                   <p className={css.scheduleMeta}>
                     {t('detail.schedule.nextRun')}{' '}
-                    {draftNextRun === undefined ? t('detail.schedule.notScheduled') : new Date(draftNextRun).toLocaleString()}
+                    {draftNextRun === undefined ? t('detail.schedule.notScheduled') : formatDateTime(draftNextRun)}
                   </p>
                 )}
               </>
@@ -678,7 +681,7 @@ export function JobDetail({ controller, job, targetOptions, modelOptions, preset
                     <button
                       type="button"
                       className={css.linkButton}
-                      title={t('detail.schedule.skipHint', { time: new Date(skipTarget).toLocaleString() })}
+                      title={t('detail.schedule.skipHint', { time: formatDateTime(skipTarget) })}
                       onClick={() => { void controller.skipNextRun(current.id) }}
                     >
                       {t('detail.schedule.skip')} ⏭
@@ -775,7 +778,7 @@ export function JobDetail({ controller, job, targetOptions, modelOptions, preset
           </section>
         </div>
 
-        {editing && error !== undefined && <p className={css.formError}>{error}</p>}
+        {editing && error !== undefined && <p className={css.formError}>{t(error)}</p>}
 
         <footer className={css.detailFooter}>
           {editing ? (

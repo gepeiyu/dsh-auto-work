@@ -33,7 +33,7 @@ const SCHEDULE_PRESETS: ReadonlyArray<{ cron: string; label: AutoWorkKey }> = [
 
 /** The default-workspace placeholder group (used before options load). */
 export const DEFAULT_TARGET_GROUPS: TargetGroup[] = [
-  { key: 'default', name: '默认工作空间', workdir: '', sessions: [] },
+  { key: 'default', name: '', workdir: '', sessions: [] },
 ]
 
 /**
@@ -57,7 +57,7 @@ export function localInputValue(date: Date): string {
 /** Flatten a group into its selectable leaves: new-session first, sessions after. */
 export function leavesOf(group: TargetGroup): Leaf[] {
   return [
-    { key: `${group.key}:new`, label: '新增会话', workdir: group.workdir, sessionId: '' },
+    { key: `${group.key}:new`, label: t('new.target.newSession'), workdir: group.workdir, sessionId: '' },
     ...group.sessions.map(session => ({
       key: `${group.key}:ss:${session.id}`,
       label: session.title,
@@ -111,6 +111,7 @@ export function TargetTree({ groups, expanded, selectedKey, onToggle, onSelect, 
       {groups.map(group => {
         const open = expanded.has(group.key)
         const leaves = leavesOf(group)
+        const name = group.key === 'default' ? t('new.target.workspaceAny') : group.name
         return (
           <div key={group.key} className={css.targetGroup} role="group">
             <button
@@ -120,7 +121,7 @@ export function TargetTree({ groups, expanded, selectedKey, onToggle, onSelect, 
               onClick={() => { onToggle(group.key) }}
             >
               <span className={`${css.targetCaret} ${open ? css.targetCaretOpen : ''}`} aria-hidden="true">▸</span>
-              <span className={css.targetGroupName}>{group.name}</span>
+              <span className={css.targetGroupName}>{name}</span>
               <span className={css.targetGroupCount}>{group.sessions.length > 0 ? `${group.sessions.length}` : ''}</span>
             </button>
             {open && (
@@ -133,7 +134,7 @@ export function TargetTree({ groups, expanded, selectedKey, onToggle, onSelect, 
                   if (leaf.sessionId === '' && presetOptions !== undefined && selected) {
                     const known = presetId === '' || presetOptions.some(preset => preset.id === presetId)
                     const defaultLabel = presetDefault !== undefined
-                      ? `${t('new.preset.followDefault')}（${presetDefault}）`
+                      ? `${t('new.preset.followDefault')} (${presetDefault})`
                       : t('new.preset.followDefault')
                     return (
                       <div
@@ -142,7 +143,7 @@ export function TargetTree({ groups, expanded, selectedKey, onToggle, onSelect, 
                         aria-selected={selected}
                         className={`${css.targetRow} ${css.targetRowSelected}`}
                         onClick={() => { onSelect(leaf.key) }}
-                        title={`${group.name} · ${leaf.label}`}
+                        title={`${name} · ${leaf.label}`}
                       >
                         <span className={css.targetRowDot} aria-hidden="true" />
                         <span className={css.targetRowLabel}>{leaf.label}</span>
@@ -180,7 +181,7 @@ export function TargetTree({ groups, expanded, selectedKey, onToggle, onSelect, 
                       aria-selected={selected}
                       className={`${css.targetRow} ${selected ? css.targetRowSelected : ''}`}
                       onClick={() => { onSelect(leaf.key) }}
-                      title={leaf.sessionId === '' ? `${group.name} · ${leaf.label}` : leaf.label}
+                      title={leaf.sessionId === '' ? `${name} · ${leaf.label}` : leaf.label}
                     >
                       <span className={css.targetRowDot} aria-hidden="true" />
                       <span className={css.targetRowLabel}>{leaf.label}</span>
@@ -236,7 +237,7 @@ export function NewJobModal({ controller, targetOptions, modelOptions, presetOpt
   // One-shot draft defaults to now + 1h (a sensible "soon but not immediate"
   // instant the user nudges from, rather than an empty field to fill).
   const [onceValue, setOnceValue] = useState(() => localInputValue(new Date(Date.now() + 60 * 60_000)))
-  const [error, setError] = useState<string | undefined>(undefined)
+  const [error, setError] = useState<AutoWorkKey | undefined>(undefined)
 
   useEffect(() => {
     let alive = true
@@ -269,7 +270,7 @@ export function NewJobModal({ controller, targetOptions, modelOptions, presetOpt
   const modelDefaultLabel = selected.sessionId !== ''
     ? t('new.model.followSession')
     : modelOptionsState.default !== undefined
-      ? `${modelOptionsState.default.provider} · ${modelOptionsState.default.model}（${t('new.model.followDefault')}）`
+      ? `${modelOptionsState.default.provider} · ${modelOptionsState.default.model} (${t('new.model.followDefault')})`
       : t('new.model.followDefault')
 
   const toggleGroup = (key: string): void => {
@@ -283,7 +284,7 @@ export function NewJobModal({ controller, targetOptions, modelOptions, presetOpt
 
   const submit = (): void => {
     if (kind === 'command' && command.trim() === '') {
-      setError(t('new.commandRequired'))
+      setError('new.commandRequired')
       return
     }
     // One-shot mode: the datetime-local draft becomes the run's ms epoch
@@ -292,7 +293,7 @@ export function NewJobModal({ controller, targetOptions, modelOptions, presetOpt
       ? new Date(onceValue).getTime()
       : undefined
     if (scheduleOn && scheduleMode === 'once' && !Number.isFinite(onceRunAt)) {
-      setError(t('new.schedule.runAt.invalid'))
+      setError('new.schedule.runAt.invalid')
       return
     }
     // Stage the schedule so createJob arms it server-side in one call
@@ -318,7 +319,7 @@ export function NewJobModal({ controller, targetOptions, modelOptions, presetOpt
       })
       void Promise.resolve(created).then(job => {
         if (job === undefined) {
-          setError(t('new.required'))
+          setError('new.required')
           return
         }
         onClose()
@@ -338,7 +339,7 @@ export function NewJobModal({ controller, targetOptions, modelOptions, presetOpt
     })
     void Promise.resolve(created).then(job => {
       if (job === undefined) {
-        setError(t('new.required'))
+        setError('new.required')
         return
       }
       onClose()
@@ -568,7 +569,7 @@ export function NewJobModal({ controller, targetOptions, modelOptions, presetOpt
                       type="number"
                       min={1}
                       value={intervalValue}
-                      placeholder="如 302"
+                      placeholder={t('detail.schedule.intervalPlaceholder')}
                       aria-label={t('detail.schedule.interval')}
                       onChange={event => { setIntervalValue(event.target.value); setError(undefined) }}
                     />
@@ -590,7 +591,7 @@ export function NewJobModal({ controller, targetOptions, modelOptions, presetOpt
           )}
         </div>
 
-        {error !== undefined && <p className={css.formError}>{error}</p>}
+        {error !== undefined && <p className={css.formError}>{t(error)}</p>}
 
         <footer className={css.modalFooter}>
           <button type="button" className={css.ghostButton} onClick={onClose}>

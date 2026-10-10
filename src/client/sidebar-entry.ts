@@ -8,7 +8,7 @@
  * reconciliation.
  */
 import type { BoardControllerFace } from './controller-face.ts'
-import { t } from './locales.ts'
+import { subscribeLocale, t } from './locales.ts'
 import css from './board.module.css'
 
 /** Stable data attribute identifying the injected entry row. */
@@ -76,6 +76,11 @@ function placeEntry(root: HTMLElement, entry: HTMLButtonElement): boolean {
  */
 export function mountSidebarEntry(controller: BoardControllerFace): () => void {
   const entry = createEntry(controller)
+  const unsubscribeLocale = subscribeLocale(() => {
+    const label = t('entry.label')
+    entry.setAttribute('aria-label', label)
+    entry.querySelector(`.${css.entryLabel}`)!.textContent = label
+  })
   let root: HTMLElement | undefined
   let placed = false
 
@@ -129,6 +134,7 @@ export function mountSidebarEntry(controller: BoardControllerFace): () => void {
     waitObserver.disconnect()
     rootObserver.disconnect()
     unsubscribe()
+    unsubscribeLocale()
     entry.remove()
   }
 }
