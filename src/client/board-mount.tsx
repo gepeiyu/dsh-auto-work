@@ -86,9 +86,9 @@ export function mountBoard(controller: BoardControllerFace, targetOptions: () =>
       controller.closeBoard()
     }
   }
-  // Jump out on sidebar context clicks (session/workspace rows hand the
-  // center column back to the conversation). Capture phase.
-  const SIDEBAR_ROW_SELECTOR = '[class*="sessionRow"], [class*="projectRow"], [class*="searchResultRow"], [class*="searchResultWorkspace"], [class*="newSession"]'
+  // Hand the center column back before native sidebar navigation runs,
+  // including global panels such as Plugins. Capture phase.
+  const SIDEBAR_ROW_SELECTOR = '[class*="sessionRow"], [class*="projectRow"], [class*="searchResultRow"], [class*="searchResultWorkspace"], [class*="newSession"], [data-pane="sidebar"] [class*="panelRow"], [class*="sidebarCol"] [class*="panelRow"]'
   const onClickSidebarRow = (event: MouseEvent): void => {
     if (!controller.getSnapshot().boardOpen) return
     const target = event.target as HTMLElement | null
