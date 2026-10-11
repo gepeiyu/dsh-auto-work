@@ -43,7 +43,7 @@ function createEntry(controller: BoardControllerFace): HTMLButtonElement {
   entry.className = css.entry
   entry.setAttribute('aria-label', t('entry.label'))
   entry.innerHTML = `<span class="${css.entryIcon}">${ICON}</span><span class="${css.entryLabel}">${t('entry.label')}</span>`
-  entry.addEventListener('click', () => { controller.toggleBoard() })
+  entry.addEventListener('click', () => { controller.openBoard() })
   return entry
 }
 
@@ -71,7 +71,7 @@ function placeEntry(root: HTMLElement, entry: HTMLButtonElement): boolean {
 /**
  * Mount the sidebar entry, waiting for the shell to render and self-healing
  * on later React re-renders.
- * @param controller - the board controller the entry toggles.
+ * @param controller - the board controller the entry opens.
  * @returns disposer removing the entry and its observers.
  */
 export function mountSidebarEntry(controller: BoardControllerFace): () => void {
