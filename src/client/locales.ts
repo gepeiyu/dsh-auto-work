@@ -1,7 +1,7 @@
 /**
  * Auto-work copy: complete English, Chinese and Japanese dictionaries,
- * selected by the DSH document language. Kept dependency-free so the DOM-injected entry
- * row and the standalone board tree share one tiny lookup.
+ * selected by the DSH document language. The native sidebar entry registers
+ * its label with the host locale service; the board uses this lookup.
  */
 
 /** zh dictionary (key-set source of truth). */

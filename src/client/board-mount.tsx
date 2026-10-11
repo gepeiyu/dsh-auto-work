@@ -1,115 +1,32 @@
-/**
- * Board view mounting (task-board precedent): the `conversation` slot is
- * single-occupant, so the board takes over the center column at the DOM
- * level — a container appended inside the `[data-pane="conversation"]` grid
- * item, hidden unless this panel is active. Toggling is a data attribute on
- * <html>; sibling panels (task board / ssh) evict each other through the
- * shared `dsh-panel-activate` event.
- */
-import { createRoot, type Root } from 'react-dom/client'
+import type { ComponentType } from 'react'
 import type { TargetGroup } from './target-options.ts'
-import { listModelOptions, listPresetOptions, type ModelOptions, type PresetOptions } from './target-options.ts'
+import { listModelOptions, listPresetOptions } from './target-options.ts'
 import type { BoardControllerFace } from './controller-face.ts'
 import { TimerBoard } from './board/TimerBoard.tsx'
-import css from './board.module.css'
+import { bindPanelNavigation, PANEL_ID, type PanelNavigationShape } from './panel-navigation.ts'
 
-/** The injected board container (kept in the DOM, hidden when inactive). */
-export const BOARD_VIEW_SELECTOR = '[data-dsh-autowork-view]'
-
-const CONVERSATION_COLUMN_SELECTOR = '[data-pane="conversation"]'
-const ACTIVE_ATTR = 'data-dsh-autowork-active'
-/** Sibling panels' activation attributes, removed when this panel opens. */
-const OTHER_ACTIVE_ATTRS = ['data-dsh-ssh-active', 'data-dsh-taskboard-active']
-/** Cross-plugin activation event; detail is the activating panel name. */
-const ACTIVATE_EVENT = 'dsh-panel-activate'
-const PANEL_NAME = 'autowork'
-
-/** Find the center column, or undefined while the frame is not mounted. */
-function conversationColumn(): HTMLElement | undefined {
-  // Try multiple selectors for different DSH versions/shells
-  const selectors = [
-    '[data-pane="conversation"]',
-    '[class*="centerCol"]',
-    '[class*="conversation"]:not([class*="sidebar"])',
-  ]
-  for (const sel of selectors) {
-    const el = document.querySelector<HTMLElement>(sel)
-    if (el) return el
-  }
-  return undefined
+/** Native slot registration face; runtime imports stay inside the host. */
+export interface SlotsServiceShape {
+  inject(name: string, setup: () => (() => void) | Iterable<() => void>): () => void
+  register<P extends object>(options: {
+    name: string
+    key?: string
+    id?: string
+    order?: number
+    label?: () => string
+    inject?: () => P
+  }, component: ComponentType<P>): () => void
 }
 
-/**
- * Mount the board React tree into the center column and bind its visibility
- * to the controller's boardOpen state.
- * @param controller - the board controller driving the view.
- * @param targetOptions - session-target dropdown data source (rebuilt on
- *   each modal open; see target-options.ts).
- * @returns disposer unmounting the tree and restoring the column.
- */
-export function mountBoard(controller: BoardControllerFace, targetOptions: () => Promise<TargetGroup[]>): () => void {
-  let root: Root | undefined
-  let container: HTMLDivElement | undefined
-  const modelOptions = (): Promise<ModelOptions> => listModelOptions()
-  const presetOptions = (): Promise<PresetOptions> => listPresetOptions()
-
-  const ensure = (): void => {
-    if (container !== undefined) return
-    const column = conversationColumn()
-    if (column === undefined) return
-    container = document.createElement('div')
-    container.dataset.dshAutoworkView = ''
-    container.className = css.boardView
-    column.appendChild(container)
-    root = createRoot(container)
-    root.render(<TimerBoard controller={controller} targetOptions={targetOptions} modelOptions={modelOptions} presetOptions={presetOptions} />)
-  }
-
-  // The frame mounts after boot settlement; watch for the column's arrival.
-  const waitObserver = new MutationObserver(() => { ensure() })
-  waitObserver.observe(document.body, { childList: true, subtree: true })
-
-  const applyActive = (): void => {
-    if (controller.getSnapshot().boardOpen) {
-      // Single-occupant center column: opening this panel evicts sibling
-      // panels (their html attributes and controller state).
-      for (const attr of OTHER_ACTIVE_ATTRS) document.documentElement.removeAttribute(attr)
-      document.documentElement.setAttribute(ACTIVE_ATTR, '')
-      document.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { detail: PANEL_NAME }))
-    } else {
-      document.documentElement.removeAttribute(ACTIVE_ATTR)
-    }
-  }
-  const onOtherActivate = (event: Event): void => {
-    const detail = (event as CustomEvent).detail
-    if (detail !== PANEL_NAME && controller.getSnapshot().boardOpen) {
-      controller.closeBoard()
-    }
-  }
-  // Hand the center column back before native sidebar navigation runs,
-  // including global panels such as Plugins. Capture phase.
-  const SIDEBAR_ROW_SELECTOR = '[class*="sessionRow"], [class*="projectRow"], [class*="searchResultRow"], [class*="searchResultWorkspace"], [class*="newSession"], [data-pane="sidebar"] [class*="panelRow"], [class*="sidebarCol"] [class*="panelRow"]'
-  const onClickSidebarRow = (event: MouseEvent): void => {
-    if (!controller.getSnapshot().boardOpen) return
-    const target = event.target as HTMLElement | null
-    if (target === null) return
-    if (target.closest(SIDEBAR_ROW_SELECTOR) !== null) controller.closeBoard()
-  }
-  document.addEventListener('click', onClickSidebarRow, true)
-  document.addEventListener(ACTIVATE_EVENT, onOtherActivate)
-  const unsubscribe = controller.subscribe(applyActive)
-  applyActive()
-  ensure()
-
-  return () => {
-    document.removeEventListener('click', onClickSidebarRow, true)
-    document.removeEventListener(ACTIVATE_EVENT, onOtherActivate)
-    waitObserver.disconnect()
-    unsubscribe()
-    document.documentElement.removeAttribute(ACTIVE_ATTR)
-    root?.unmount()
-    root = undefined
-    container?.remove()
-    container = undefined
-  }
+/** Register a global page like the official Plugins page. */
+export function mountBoard(slots: SlotsServiceShape, layout: PanelNavigationShape, controller: BoardControllerFace, targetOptions: () => Promise<TargetGroup[]>): () => void {
+  return slots.inject('main', function* () {
+    yield slots.register({
+      name: 'main',
+      key: PANEL_ID,
+      inject: () => ({ controller, targetOptions, modelOptions: listModelOptions, presetOptions: listPresetOptions }),
+    }, TimerBoard)
+    // The native key must be registered before navigation can select it.
+    yield bindPanelNavigation(controller, layout)
+  })
 }

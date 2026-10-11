@@ -4,92 +4,10 @@
  * board follows the active theme (light/dark and skins).
  */
 
-/* --- center-column takeover (global rules, attribute-scoped) ----------------- */
-
-[data-pane='conversation'],
-[class*='centerCol'] {
-  position: relative;
-}
-
-/* The board container rides inside the conversation grid item as an extra
-   trailing child; hidden unless the board is active. */
-[data-dsh-autowork-view] {
-  position: absolute;
-  inset: 0;
-  display: none;
-  z-index: 60;
-  /* Opaque backdrop: the conversation subtree stays mounted under the view. */
-  background: var(--dsw-alias-bg-base);
-}
-
-/* The center column is single-occupant; the :not() guards keep sibling
-   panels (task board / ssh / this one) from fighting over visibility. */
-html[data-dsh-autowork-active]:not([data-dsh-ssh-active]):not([data-dsh-taskboard-active]) [data-dsh-autowork-view] {
-  display: block;
-}
-
-/* While the board is active, the conversation content underneath is hidden
-   (it stays mounted and stateful). */
-html[data-dsh-autowork-active]:not([data-dsh-ssh-active]):not([data-dsh-taskboard-active]) [data-pane='conversation'] > :not([data-dsh-autowork-view]),
-html[data-dsh-autowork-active]:not([data-dsh-ssh-active]):not([data-dsh-taskboard-active]) [class*='centerCol'] > :not([data-dsh-autowork-view]) {
-  display: none !important;
-}
-
-/* --- sidebar entry row ------------------------------------------------------- */
-
-.entry {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  height: 32px;
-  padding: 0 12px;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  color: var(--dsw-alias-label-secondary);
-  cursor: pointer;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.entry:hover {
-  background: var(--dsw-alias-interactive-bg-hover, var(--dsw-specific-sidebar-nav-item-hover));
-  color: var(--dsw-alias-label-primary);
-}
-
-.entry[data-active] {
-  background: var(--dsw-alias-interactive-bg-hover, var(--dsw-specific-sidebar-nav-item-active));
-  color: var(--dsw-alias-label-primary);
-  font-weight: 600;
-}
-
-.entryIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-}
-
-.entryLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Collapsed rail: icon-only, centered, matching the shell's 56px rail. */
-[data-dsh-frame][data-sidebar-collapsed] .entry {
-  justify-content: center;
-  padding: 0;
-  width: 100%;
-}
-
-[data-dsh-frame][data-sidebar-collapsed] .entryLabel {
-  display: none;
-}
-
 /* --- board frame -------------------------------------------------------------- */
 
 .board {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   height: 100%;
