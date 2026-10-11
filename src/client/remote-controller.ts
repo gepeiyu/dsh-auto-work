@@ -4,16 +4,16 @@
  * controller keeps a polled mirror, forwards every mutation as a precise
  * HTTP call, and refreshes immediately after each one.
  *
- * Implements the same surface the UI components consumed from the old local
- * controller (TimerBoard / JobDetail / NewJobModal), so the React tree is
- * unchanged. `applyScheduleNextRun` is a deliberate no-op: schedule rolling
+ * Mutations return a confirmed result and report feedback to the shell.
+ * `applyScheduleNextRun` is a deliberate no-op: schedule rolling
  * is host-owned now.
  */
 import type {
   ControllerSnapshot, SessionsControllerFace,
 } from '../core/controller.ts'
 import type { JobModelSelection, JobRecord, NewJobInput, SessionTarget } from '../core/jobs.ts'
-import { t } from './locales.ts'
+import type { OperationNotice } from './feedback.tsx'
+import type { AutoWorkKey } from './locales.ts'
 
 /** The navigation face (ctx.uiWorkspace.openSession for transcript jumps). */
 export type { SessionsControllerFace }
@@ -35,7 +35,7 @@ export class RemoteBoardController {
   /**
    * @param sessions - navigation face (open a session transcript).
    */
-  constructor(private readonly sessions: SessionsControllerFace) {}
+  constructor(private readonly sessions: SessionsControllerFace, private readonly report: (notice: OperationNotice) => void = () => {}) {}
 
   // --- lifecycle -------------------------------------------------------------
 
@@ -123,9 +123,13 @@ export class RemoteBoardController {
         ? { kind: 'command', command: input.command ?? '', args: input.args ?? '' }
         : {}),
     })
-    if (response === undefined || response.error !== undefined) return undefined
+    if (response?.job === null || typeof response?.job !== 'object' || typeof (response.job as JobRecord).id !== 'string') {
+      this.report({ key: 'feedback.failed', success: false })
+      return undefined
+    }
+    const created = response.job as JobRecord
+    this.report({ key: 'feedback.created', success: true })
     await this.refresh()
-    const created = (response.job as JobRecord | undefined) ?? this.jobs[this.jobs.length - 1]
     this.pendingCreateSchedule = undefined
     return created
   }
@@ -138,35 +142,35 @@ export class RemoteBoardController {
     this.pendingCreateSchedule = schedule
   }
 
-  async updateJob(id: string, patch: Partial<Pick<JobRecord, 'title' | 'description' | 'prompt' | 'command' | 'args' | 'preset'>> & { target?: SessionTarget; cron?: string; intervalMinutes?: number; nextRunAt?: number; scheduleEnabled?: boolean; timeoutMinutes?: number; modelSelection?: JobModelSelection | null }): Promise<void> {
+  async updateJob(id: string, patch: Partial<Pick<JobRecord, 'title' | 'description' | 'prompt' | 'command' | 'args' | 'preset'>> & { target?: SessionTarget; cron?: string; intervalMinutes?: number; nextRunAt?: number; scheduleEnabled?: boolean; timeoutMinutes?: number; modelSelection?: JobModelSelection | null }): Promise<boolean> {
     const body: Record<string, unknown> = { ...patch }
     if (patch.timeoutMinutes !== undefined) body.timeoutMinutes = patch.timeoutMinutes
     // modelSelection: object pins a model, null clears it (host deletes the
     // field); omitting it leaves the stored selection untouched.
     if (patch.modelSelection === undefined) delete body.modelSelection
-    await this.fetchJson('PATCH', `/api/dsh-auto-work/jobs?id=${encodeURIComponent(id)}`, body)
-    await this.refresh()
+    return this.mutate(id, body, 'feedback.saved')
   }
 
-  async deleteJob(id: string): Promise<void> {
-    await this.fetchJson('DELETE', `/api/dsh-auto-work/jobs?id=${encodeURIComponent(id)}`)
-    if (this.selectedJobId === id) this.selectedJobId = undefined
+  async deleteJob(id: string): Promise<boolean> {
+    const response = await this.fetchJson('DELETE', `/api/dsh-auto-work/jobs?id=${encodeURIComponent(id)}`)
+    const ok = response?.ok === true
+    this.report({ key: ok ? 'feedback.deleted' : 'feedback.failed', success: ok })
+    if (!ok) return false
+    if (this.selectedJobId === id) this.closeJob()
     await this.refresh()
+    return true
   }
 
-  async resetJob(id: string): Promise<void> {
-    await this.fetchJson('PATCH', `/api/dsh-auto-work/jobs?id=${encodeURIComponent(id)}`, { resetStatus: true })
-    await this.refresh()
+  async resetJob(id: string): Promise<boolean> {
+    return this.mutate(id, { resetStatus: true }, 'feedback.reset')
   }
 
-  async archiveJob(id: string): Promise<void> {
-    await this.fetchJson('PATCH', `/api/dsh-auto-work/jobs?id=${encodeURIComponent(id)}`, { archived: true })
-    await this.refresh()
+  async archiveJob(id: string): Promise<boolean> {
+    return this.mutate(id, { archived: true }, 'feedback.archived')
   }
 
-  async restartJob(id: string): Promise<void> {
-    await this.fetchJson('PATCH', `/api/dsh-auto-work/jobs?id=${encodeURIComponent(id)}`, { restart: true })
-    await this.refresh()
+  async restartJob(id: string): Promise<boolean> {
+    return this.mutate(id, { restart: true }, 'feedback.restarted')
   }
 
   async setSchedule(id: string, patch: { enabled?: boolean; cron?: string; intervalMinutes?: number }): Promise<boolean> {
@@ -174,16 +178,12 @@ export class RemoteBoardController {
     if (patch.cron !== undefined) body.cron = patch.cron
     if (patch.intervalMinutes !== undefined) body.intervalMinutes = patch.intervalMinutes
     if (patch.enabled !== undefined) body.scheduleEnabled = patch.enabled
-    const response = await this.fetchJson('PATCH', `/api/dsh-auto-work/jobs?id=${encodeURIComponent(id)}`, body)
-    await this.refresh()
-    return response !== undefined && response.error === undefined
+    return this.mutate(id, body, 'feedback.saved')
   }
 
   /** Skip the next scheduled fire (host rolls nextRunAt one occurrence). */
   async skipNextRun(id: string): Promise<boolean> {
-    const response = await this.fetchJson('PATCH', `/api/dsh-auto-work/jobs?id=${encodeURIComponent(id)}`, { skipNext: true })
-    await this.refresh()
-    return response !== undefined && response.error === undefined
+    return this.mutate(id, { skipNext: true }, 'feedback.skipped')
   }
 
   /** Host-owned now; kept for interface parity. */
@@ -202,7 +202,7 @@ export class RemoteBoardController {
         this.closeBoard()
       } catch (error) {
         console.warn('[dsh-auto-work] open session failed:', sessionId, error)
-        globalThis.alert?.(t('detail.openSessionFailed', { sessionId }))
+        this.report({ key: 'detail.openSessionFailed', params: { sessionId }, success: false })
       }
     }
     const refresh = this.sessions.refresh
@@ -225,16 +225,26 @@ export class RemoteBoardController {
   /** Fire now (host runs it in the background). */
   async runJob(id: string): Promise<boolean> {
     const response = await this.fetchJson('POST', `/api/dsh-auto-work/jobs/run?id=${encodeURIComponent(id)}`)
-    await this.refresh()
-    return response !== undefined && response.ok === true
+    const ok = response?.ok === true
+    this.report({ key: ok ? 'feedback.started' : 'feedback.failed', success: ok })
+    if (ok) await this.refresh()
+    return ok
   }
 
   /** Re-run a settled job (same as runJob — status guard is host-side). */
-  async rerunJob(id: string): Promise<void> {
-    await this.runJob(id)
+  async rerunJob(id: string): Promise<boolean> {
+    return this.runJob(id)
   }
 
   // --- internals ---------------------------------------------------------------
+
+  private async mutate(id: string, body: unknown, key: AutoWorkKey): Promise<boolean> {
+    const response = await this.fetchJson('PATCH', `/api/dsh-auto-work/jobs?id=${encodeURIComponent(id)}`, body)
+    const ok = response?.job !== null && typeof response?.job === 'object' && (response.job as JobRecord).id === id
+    this.report({ key: ok ? key : 'feedback.failed', success: ok })
+    if (ok) await this.refresh()
+    return ok
+  }
 
   private async refresh(): Promise<void> {
     if (this.refreshInFlight) return
@@ -256,8 +266,12 @@ export class RemoteBoardController {
         method,
         ...(body !== undefined ? { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } } : {}),
       })
+      if (!response.ok) return undefined
       if (response.status === 204) return {}
-      return await response.json() as Record<string, unknown>
+      const data: unknown = await response.json()
+      if (data === null || typeof data !== 'object' || Array.isArray(data)) return undefined
+      const record = data as Record<string, unknown>
+      return record.error === undefined ? record : undefined
     } catch (error) {
       // Degrade to the stale mirror; the next poll retries.
       console.warn('[dsh-auto-work] host route call failed:', method, url, error)

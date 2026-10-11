@@ -6,6 +6,16 @@
 
 /** zh dictionary (key-set source of truth). */
 export const zh = {
+  'feedback.failed': '操作失败，请重试',
+  'feedback.created': '任务已创建',
+  'feedback.saved': '修改已保存',
+  'feedback.deleted': '任务已删除',
+  'feedback.reset': '状态已重置',
+  'feedback.archived': '任务已归档',
+  'feedback.restarted': '任务已恢复',
+  'feedback.skipped': '已跳过下次运行',
+  'feedback.started': '任务已启动',
+
   'entry.label': '定时任务',
   'board.title': '定时任务 × Agent',
   'board.close': '返回对话',
@@ -148,6 +158,16 @@ export const zh = {
 
 /** en dictionary, complete against the zh key set. */
 export const en: Record<keyof typeof zh, string> = {
+  'feedback.failed': 'Operation failed. Please try again.',
+  'feedback.created': 'Task created',
+  'feedback.saved': 'Changes saved',
+  'feedback.deleted': 'Task deleted',
+  'feedback.reset': 'Status reset',
+  'feedback.archived': 'Task archived',
+  'feedback.restarted': 'Task restored',
+  'feedback.skipped': 'Next run skipped',
+  'feedback.started': 'Task started',
+
   'entry.label': 'Timed Jobs',
   'board.title': 'Timed Jobs × Agent',
   'board.close': 'Back to chat',
@@ -290,6 +310,16 @@ export const en: Record<keyof typeof zh, string> = {
 
 /** Japanese dictionary, complete against the shared key set. */
 export const ja: Record<keyof typeof zh, string> = {
+  'feedback.failed': '操作に失敗しました。再試行してください',
+  'feedback.created': 'タスクを作成しました',
+  'feedback.saved': '変更を保存しました',
+  'feedback.deleted': 'タスクを削除しました',
+  'feedback.reset': '状態をリセットしました',
+  'feedback.archived': 'タスクをアーカイブしました',
+  'feedback.restarted': 'タスクを復元しました',
+  'feedback.skipped': '次回の実行をスキップしました',
+  'feedback.started': 'タスクを開始しました',
+
   'entry.label': '定期タスク',
   'board.title': '定期タスク × Agent',
   'board.close': 'チャットに戻る',

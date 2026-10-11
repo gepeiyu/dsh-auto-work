@@ -9,12 +9,13 @@
  * 保存 in the footer persists everything in one PATCH. No field saves on
  * its own while editing.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { isIntervalRule, isOneShotRule, isSchedulable, isValidCron, nextRunAtMs, scheduleNextMs } from '../../core/schedule.ts'
 import { commandLine, jobKind, timeoutLabel, type ExecutionRecord, type JobRecord, type ScheduleRule } from '../../core/jobs.ts'
 import type { ModelOptions, PresetOptions, TargetGroup } from '../target-options.ts'
 import type { BoardControllerFace } from '../controller-face.ts'
 import { currentLocale, formatDateTime, t, type AutoWorkKey } from '../locales.ts'
+import { Button, Input, Modal, Switch, SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives'
 import css from '../board.module.css'
 import { formatTime, STATUS_LABEL_KEY } from './TimerBoard.tsx'
 import { DEFAULT_TARGET_GROUPS, intervalDraftMinutes, leavesOf, modelLeavesOf, TargetTree } from './NewJobModal.tsx'
@@ -52,14 +53,14 @@ function ExecutionRow({ execution, onOpen }: { execution: ExecutionRecord; onOpe
         {isCommand && execution.exitCode !== undefined && ` · ${t('detail.execution.exitCode')} ${execution.exitCode}`}
       </span>
       {execution.sessionId !== undefined && (
-        <button
+        <Button
           type="button"
-          className={css.linkButton}
+          variant="toolbar" size="sm"
           onClick={() => { onOpen(execution.sessionId as string) }}
           title={execution.sessionId}
         >
           {t('detail.viewSession')} ⌁
-        </button>
+        </Button>
       )}
       {execution.error !== undefined && execution.error !== '' && (
         <span className={css.executionError}>{execution.error}</span>
@@ -138,24 +139,21 @@ function keyForTarget(groups: TargetGroup[], job: JobRecord): string | undefined
   return undefined
 }
 
-/** Confirm-dialog shape (inline; the board owns no shared dialog). */
-function Confirm({ message, confirmLabel, onConfirm, onCancel }: {
+/** Native nested modal owns Escape, focus trapping and focus restoration. */
+function Confirm({ message, confirmLabel, onConfirm, onCancel, pending }: {
   message: string
   confirmLabel: string
   onConfirm: () => void
   onCancel: () => void
+  pending: boolean
 }) {
-  return (
-    <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onCancel() }}>
-      <div className={css.modal} role="alertdialog" style={{ width: 'min(380px, 100%)' }}>
-        <p className={css.confirmText}>{message}</p>
-        <footer className={css.modalFooter}>
-          <button type="button" className={css.ghostButton} onClick={onCancel}>{t('delete.cancel')}</button>
-          <button type="button" className={css.dangerButton} onClick={onConfirm}>{confirmLabel}</button>
-        </footer>
-      </div>
-    </div>
-  )
+  return <Modal open title={t('detail.delete')} description={message} closeLabel={t('delete.cancel')}
+    onClose={() => { if (!pending) onCancel() }}
+    footer={<>
+      <Button type="button" variant="outline" disabled={pending} data-modal-autofocus onClick={onCancel}>{t('delete.cancel')}</Button>
+      <Button type="button" variant="outline" className={css.dangerButton} disabled={pending} onClick={onConfirm}>{confirmLabel}</Button>
+    </>}
+  />
 }
 
 /** Human label for a job's current model resolution. */
@@ -168,6 +166,8 @@ function modelLabel(job: JobRecord): string {
 
 /** Job detail overlay. */
 export function JobDetail({ controller, job, targetOptions, modelOptions, presetOptions }: { controller: BoardControllerFace; job: JobRecord; targetOptions: () => Promise<TargetGroup[]>; modelOptions: () => Promise<ModelOptions>; presetOptions: () => Promise<PresetOptions> }) {
+  const scheduleId = useId()
+  const [acting, setActing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const running = job.status === 'running'
   const archived = job.status === 'archived'
@@ -307,8 +307,8 @@ export function JobDetail({ controller, job, targetOptions, modelOptions, preset
           const timeoutMinutes = timeoutDraft.trim() === '' ? 0 : Number(timeoutDraft)
           return Number.isFinite(timeoutMinutes) ? { timeoutMinutes } : {}
         })(),
-      })).then(() => {
-        setEditing(false)
+      })).then(ok => {
+        if (ok) setEditing(false)
         setSaving(false)
       }).catch(() => { setSaving(false) })
       return
@@ -338,8 +338,8 @@ export function JobDetail({ controller, job, targetOptions, modelOptions, preset
       scheduleEnabled: scheduleEnabledDraft,
       ...(Number.isFinite(timeoutMinutes) ? { timeoutMinutes } : {}),
       ...(modelSelection !== undefined ? { modelSelection } : {}),
-    })).then(() => {
-      setEditing(false)
+    })).then(ok => {
+      if (ok) setEditing(false)
       setSaving(false)
     }).catch(() => { setSaving(false) })
   }
@@ -357,10 +357,20 @@ export function JobDetail({ controller, job, targetOptions, modelOptions, preset
   const saveNextRun = (): void => {
     const ms = new Date(nextRunDraft).getTime()
     if (!Number.isFinite(ms)) return
-    void Promise.resolve(controller.updateJob(current.id, { nextRunAt: ms })).then(() => {
-      setNextRunDraft('')
-    }).catch(() => undefined)
+    void act(() => Promise.resolve(controller.updateJob(current.id, { nextRunAt: ms })).then(ok => {
+      if (ok) setNextRunDraft('')
+      return ok
+    }))
   }
+
+  const act = async (operation: () => boolean | Promise<boolean>, closeOnSuccess = false): Promise<void> => {
+    if (acting) return
+    setActing(true)
+    try {
+      if (await operation() && closeOnSuccess) controller.closeJob()
+    } finally { setActing(false) }
+  }
+  const close = (): void => { if (!saving && !acting) controller.closeJob() }
 
   // Read-only schedule labels.
   const enabled = current.schedule?.enabled ?? false
@@ -399,489 +409,462 @@ export function JobDetail({ controller, job, targetOptions, modelOptions, preset
   const canEditNextRun = canEdit && enabled && (isIntervalRule(liveSchedule) || oneShot)
 
   return (
-    <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) controller.closeJob() }}>
-      <div className={css.detail} role="dialog" aria-label={t('detail.title')}>
-        <header className={css.detailHeader}>
-          <h2 className={css.detailTitle}>{current.title}</h2>
-          <span className={css.kindBadge} data-kind={isCommand ? 'command' : 'agent'}>
-            {isCommand ? `⌘ ${t('detail.kind.command')}` : t('detail.kind.agent')}
-          </span>
-          <span className={css.statusBadge} data-status={current.status}>
-            <span className={css.statusDot} aria-hidden="true" />
-            {t(STATUS_LABEL_KEY[current.status])}
-          </span>
-          <button
-            type="button"
-            className={css.iconButton}
-            aria-label={t('detail.close')}
-            onClick={() => { controller.closeJob() }}
-          >
-            ×
-          </button>
-        </header>
-
-        <div className={css.detailBody}>
-          {!editing && (
-            <section className={css.detailSection}>
-              <h4>{t('detail.description')}</h4>
-              <p className={css.detailText}>{current.description !== '' ? current.description : '—'}</p>
-            </section>
-          )}
-
-          {isCommand ? (
-            <section className={css.detailSection}>
-              <h4>{t('detail.command')}</h4>
-              {editing ? (
-                <>
-                  <label className={css.field}>
-                    <span className={css.fieldLabel}>{t('new.command')}</span>
-                    <input
-                      className={css.input}
-                      style={{ width: '100%' }}
-                      value={commandDraft}
-                      placeholder={t('new.commandPlaceholder')}
-                      aria-label={t('new.command')}
-                      spellCheck={false}
-                      onChange={event => { setCommandDraft(event.target.value); setError(undefined) }}
-                    />
-                  </label>
-                  <label className={css.field}>
-                    <span className={css.fieldLabel}>{t('new.args')}</span>
-                    <input
-                      className={css.input}
-                      style={{ width: '100%' }}
-                      value={argsDraft}
-                      placeholder={t('new.argsPlaceholder')}
-                      aria-label={t('new.args')}
-                      spellCheck={false}
-                      onChange={event => { setArgsDraft(event.target.value) }}
-                    />
-                  </label>
-                  <label className={css.field}>
-                    <span className={css.fieldLabel}>{t('new.workdir')}</span>
-                    <input
-                      className={css.input}
-                      style={{ width: '100%' }}
-                      value={workdirDraft}
-                      placeholder={t('new.workdirPlaceholder')}
-                      aria-label={t('new.workdir')}
-                      spellCheck={false}
-                      onChange={event => { setWorkdirDraft(event.target.value) }}
-                    />
-                  </label>
-                </>
-              ) : (
-                <pre className={css.promptBlock}>{commandLine(current)}</pre>
-              )}
-            </section>
-          ) : (
-            <section className={css.detailSection}>
-              <h4>{t('detail.prompt')}</h4>
-              {editing ? (
-                <textarea
-                  className={css.input}
-                  style={{ width: '100%', minHeight: '96px', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.5', boxSizing: 'border-box' }}
-                  value={promptDraft}
-                  placeholder={t('new.promptPlaceholder')}
-                  aria-label={t('detail.prompt')}
-                  onChange={event => { setPromptDraft(event.target.value) }}
-                />
-              ) : (
-                (() => {
-                  const text = current.prompt !== '' ? current.prompt : current.title
-                  const foldable = text.split('\n').length > PROMPT_PREVIEW_LINES
-                  return (
-                    <>
-                      <pre
-                        className={`${css.promptBlock}${promptExpanded || !foldable ? '' : ` ${css.promptBlockClamped}`}`}
-                      >
-                        {text}
-                      </pre>
-                      {foldable && (
-                        <button
-                          type="button"
-                          className={css.linkButton}
-                          onClick={() => { setPromptExpanded(prev => !prev) }}
-                        >
-                          {promptExpanded ? t('detail.prompt.collapse') : t('detail.prompt.view')}
-                        </button>
-                      )}
-                    </>
-                  )
-                })()
-              )}
-            </section>
-          )}
-
-          {!isCommand && (
-            <section className={css.detailSection}>
-              <h4>{t('new.target')}</h4>
-              {editing ? (
-                <>
-                  <TargetTree
-                    groups={groups}
-                    expanded={expanded}
-                    selectedKey={selectedKey}
-                    onToggle={toggleGroup}
-                    onSelect={setSelectedKey}
-                    presetOptions={presetOptionsState.presets}
-                    presetDefault={presetOptionsState.default}
-                    presetId={presetDraft}
-                    onPresetChange={setPresetDraft}
-                  />
-                  <span className={css.fieldHint}>{t('new.target.hint')}</span>
-                </>
-              ) : (
-                <p className={css.detailText}>{targetLabel(current)}</p>
-              )}
-            </section>
-          )}
-
-          {!isCommand && (
-            <section className={css.detailSection}>
-              <h4>{t('new.model')}</h4>
-            {editing ? (
-              (() => {
-                const leaves = modelLeavesOf(modelOptionsState)
-                const modelDefaultLabel = selectedTarget.sessionId !== ''
-                  ? t('new.model.followSession')
-                  : modelOptionsState.default !== undefined
-                    ? `${modelOptionsState.default.provider} · ${modelOptionsState.default.model} (${t('new.model.followDefault')})`
-                    : t('new.model.followDefault')
-                const known = modelKey === '' || leaves.some(item => item.key === modelKey)
-                return (
-                  <select
-                    className={css.input}
-                    style={{ width: '100%' }}
-                    value={modelKey}
-                    aria-label={t('new.model')}
-                    onChange={event => { setModelKey(event.target.value) }}
-                  >
-                    <option value="">{modelDefaultLabel}</option>
-                    {!known && current.modelSelection !== undefined && (
-                      <option value={modelKey}>
-                        {current.modelSelection.provider} · {current.modelSelection.model}
-                      </option>
-                    )}
-                    {leaves.map(item => (
-                      <option key={item.key} value={item.key}>{item.label}</option>
-                    ))}
-                  </select>
-                )
-              })()
-            ) : (
-              <p className={css.detailText}>{modelLabel(current)}</p>
-            )}
-          </section>
-          )}
-
-          <section className={css.detailSection}>
-            <h4>{t('detail.schedule')}</h4>
+    <>
+      <Modal open title={current.title} closeLabel={t('detail.close')} onClose={close} className={css.jobModal} contentClassName={css.jobModalContent}
+        footer={
+          <footer className={css.detailFooter}>
             {editing ? (
               <>
-                <label className={css.scheduleToggle}>
-                  <input
-                    type="checkbox"
-                    checked={scheduleEnabledDraft}
-                    onChange={event => { setScheduleEnabledDraft(event.target.checked); setError(undefined) }}
-                  />
-                  <span>{t('detail.schedule.enable')}</span>
-                </label>
-                <div className={css.kindToggle} role="radiogroup" aria-label={t('detail.schedule')}>
-                  <button
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={saving}
+                  onClick={cancelEdit}
+                >
+                  {t('detail.editCancel')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={saving}
+                  onClick={saveEdit}
+                >
+                  {t('detail.save')}
+                </Button>
+              </>
+            ) : (
+              <>
+                {archived && (
+                  <span className={css.detailText}>{t('detail.archivedHint')}</span>
+                )}
+                {canEdit && (
+                  <Button
                     type="button"
-                    role="radio"
-                    aria-checked={scheduleModeDraft === 'cron'}
-                    className={`${css.kindOption} ${scheduleModeDraft === 'cron' ? css.kindOptionActive : ''}`}
-                    onClick={() => { setScheduleModeDraft('cron'); setError(undefined) }}
+                    variant="outline"
+                    disabled={acting}
+                    onClick={startEdit}
                   >
-                    {t('detail.schedule.cron')}
-                  </button>
-                  <button
+                    {t('detail.edit')}
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={running || archived || acting}
+                  onClick={() => { void act(() => controller.rerunJob(current.id), true) }}
+                >
+                  {current.executions.length === 0 ? t('detail.run') : t('detail.rerun')}
+                </Button>
+                {archived ? (
+                  <Button
                     type="button"
-                    role="radio"
-                    aria-checked={scheduleModeDraft === 'interval'}
-                    className={`${css.kindOption} ${scheduleModeDraft === 'interval' ? css.kindOptionActive : ''}`}
-                    onClick={() => { setScheduleModeDraft('interval'); setError(undefined) }}
+                    variant="primary"
+                    disabled={acting}
+                    onClick={() => { void act(() => controller.restartJob(current.id)) }}
                   >
-                    {t('detail.schedule.modeInterval')}
-                  </button>
-                </div>
-                {scheduleModeDraft === 'cron' ? (
-                  <div className={css.scheduleRow}>
-                    <input
-                      className={`${css.input} ${css.scheduleInput}${!draftCronValid ? ` ${css.scheduleInputInvalid}` : ''}`}
-                      value={cronDraft}
-                      placeholder="0 9 * * *"
-                      spellCheck={false}
-                      aria-label={t('detail.schedule.cron')}
-                      onChange={event => { setCronDraft(event.target.value); setError(undefined) }}
-                    />
-                    <select
-                      className={`${css.input} ${css.schedulePreset}`}
-                      value=""
-                      aria-label={t('detail.schedule.presets')}
-                      onChange={event => {
-                        const preset = event.target.value
-                        if (preset !== '') {
-                          setCronDraft(preset)
-                          setError(undefined)
-                        }
-                      }}
+                    {t('detail.restart')}
+                  </Button>
+                ) : (
+                  !running && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={acting}
+                    onClick={() => { void act(() => controller.archiveJob(current.id)) }}
                     >
-                      <option value="">{t('detail.schedule.presets')}…</option>
-                      {SCHEDULE_PRESETS.map(preset => (
-                        <option key={preset.cron} value={preset.cron}>{t(preset.label)}</option>
+                      {t('detail.archive')}
+                    </Button>
+                  )
+                )}
+                {!running && !archived && current.status !== 'idle' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={acting}
+                    onClick={() => { void act(() => controller.resetJob(current.id)) }}
+                  >
+                    {t('detail.reset')}
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline" className={css.dangerButton}
+                  disabled={acting}
+                    onClick={() => { setConfirmDelete(true) }}
+                >
+                  {t('detail.delete')}
+                </Button>
+              </>
+            )}
+            <span className={css.detailMeta}>
+              {t('board.created')} {formatTime(current.createdAt)}
+            </span>
+          </footer>
+        }
+      >
+        <fieldset className={css.formFields} disabled={saving || acting}>
+          <header className={css.detailHeader}>
+            <span className={css.kindBadge} data-kind={isCommand ? 'command' : 'agent'}>
+              {isCommand ? `⌘ ${t('detail.kind.command')}` : t('detail.kind.agent')}
+            </span>
+            <span className={css.statusBadge} data-status={current.status}>
+              <span className={css.statusDot} aria-hidden="true" />
+              {t(STATUS_LABEL_KEY[current.status])}
+            </span>
+
+          </header>
+
+          <div className={css.detailBody}>
+            {!editing && (
+              <section className={css.detailSection}>
+                <h4>{t('detail.description')}</h4>
+                <p className={css.detailText}>{current.description !== '' ? current.description : '—'}</p>
+              </section>
+            )}
+
+            {isCommand ? (
+              <section className={css.detailSection}>
+                <h4>{t('detail.command')}</h4>
+                {editing ? (
+                  <>
+                    <label className={css.field}>
+                      <span className={css.fieldLabel}>{t('new.command')}</span>
+                      <Input
+                        style={{ width: '100%' }}
+                        value={commandDraft}
+                        placeholder={t('new.commandPlaceholder')}
+                        aria-label={t('new.command')}
+                        spellCheck={false}
+                        onChange={event => { setCommandDraft(event.target.value); setError(undefined) }}
+                      />
+                    </label>
+                    <label className={css.field}>
+                      <span className={css.fieldLabel}>{t('new.args')}</span>
+                      <Input
+                        style={{ width: '100%' }}
+                        value={argsDraft}
+                        placeholder={t('new.argsPlaceholder')}
+                        aria-label={t('new.args')}
+                        spellCheck={false}
+                        onChange={event => { setArgsDraft(event.target.value) }}
+                      />
+                    </label>
+                    <label className={css.field}>
+                      <span className={css.fieldLabel}>{t('new.workdir')}</span>
+                      <Input
+                        style={{ width: '100%' }}
+                        value={workdirDraft}
+                        placeholder={t('new.workdirPlaceholder')}
+                        aria-label={t('new.workdir')}
+                        spellCheck={false}
+                        onChange={event => { setWorkdirDraft(event.target.value) }}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <pre className={css.promptBlock}>{commandLine(current)}</pre>
+                )}
+              </section>
+            ) : (
+              <section className={css.detailSection}>
+                <h4>{t('detail.prompt')}</h4>
+                {editing ? (
+                  <textarea
+                    className={css.input}
+                    style={{ width: '100%', minHeight: '96px', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.5', boxSizing: 'border-box' }}
+                    value={promptDraft}
+                    placeholder={t('new.promptPlaceholder')}
+                    aria-label={t('detail.prompt')}
+                    onChange={event => { setPromptDraft(event.target.value) }}
+                  />
+                ) : (
+                  (() => {
+                    const text = current.prompt !== '' ? current.prompt : current.title
+                    const foldable = text.split('\n').length > PROMPT_PREVIEW_LINES
+                    return (
+                      <>
+                        <pre
+                          className={`${css.promptBlock}${promptExpanded || !foldable ? '' : ` ${css.promptBlockClamped}`}`}
+                        >
+                          {text}
+                        </pre>
+                        {foldable && (
+                          <Button
+                            type="button"
+                            variant="toolbar" size="sm"
+                            onClick={() => { setPromptExpanded(prev => !prev) }}
+                          >
+                            {promptExpanded ? t('detail.prompt.collapse') : t('detail.prompt.view')}
+                          </Button>
+                        )}
+                      </>
+                    )
+                  })()
+                )}
+              </section>
+            )}
+
+            {!isCommand && (
+              <section className={css.detailSection}>
+                <h4>{t('new.target')}</h4>
+                {editing ? (
+                  <>
+                    <TargetTree
+                      groups={groups}
+                      expanded={expanded}
+                      selectedKey={selectedKey}
+                      onToggle={toggleGroup}
+                      onSelect={setSelectedKey}
+                      presetOptions={presetOptionsState.presets}
+                      presetDefault={presetOptionsState.default}
+                      presetId={presetDraft}
+                      onPresetChange={setPresetDraft}
+                    />
+                    <span className={css.fieldHint}>{t('new.target.hint')}</span>
+                  </>
+                ) : (
+                  <p className={css.detailText}>{targetLabel(current)}</p>
+                )}
+              </section>
+            )}
+
+            {!isCommand && (
+              <section className={css.detailSection}>
+                <h4>{t('new.model')}</h4>
+              {editing ? (
+                (() => {
+                  const leaves = modelLeavesOf(modelOptionsState)
+                  const modelDefaultLabel = selectedTarget.sessionId !== ''
+                    ? t('new.model.followSession')
+                    : modelOptionsState.default !== undefined
+                      ? `${modelOptionsState.default.provider} · ${modelOptionsState.default.model} (${t('new.model.followDefault')})`
+                      : t('new.model.followDefault')
+                  const known = modelKey === '' || leaves.some(item => item.key === modelKey)
+                  return (
+                    <select
+                      className={css.input}
+                      style={{ width: '100%' }}
+                      value={modelKey}
+                      aria-label={t('new.model')}
+                      onChange={event => { setModelKey(event.target.value) }}
+                    >
+                      <option value="">{modelDefaultLabel}</option>
+                      {!known && current.modelSelection !== undefined && (
+                        <option value={modelKey}>
+                          {current.modelSelection.provider} · {current.modelSelection.model}
+                        </option>
+                      )}
+                      {leaves.map(item => (
+                        <option key={item.key} value={item.key}>{item.label}</option>
                       ))}
                     </select>
+                  )
+                })()
+              ) : (
+                <p className={css.detailText}>{modelLabel(current)}</p>
+              )}
+            </section>
+            )}
+
+            <section className={css.detailSection}>
+              <h4>{t('detail.schedule')}</h4>
+              {editing ? (
+                <>
+                  <div className={css.scheduleToggle}>
+                    <Switch checked={scheduleEnabledDraft} label={t('detail.schedule.enable')} disabled={saving}
+                      onChange={value => { setScheduleEnabledDraft(value); setError(undefined) }} />
+                    <span>{t('detail.schedule.enable')}</span>
                   </div>
-                ) : (
-                  <>
+                  <SegmentedControl id={scheduleId} value={scheduleModeDraft} label={t('detail.schedule')} disabled={saving}
+                    options={[{ value: 'cron', label: t('detail.schedule.cron') }, { value: 'interval', label: t('detail.schedule.modeInterval') }]}
+                    onChange={value => { setScheduleModeDraft(value); setError(undefined) }} />
+                  <div role="tabpanel" id={`${scheduleId}-${scheduleModeDraft}-panel`} aria-labelledby={`${scheduleId}-${scheduleModeDraft}`}>
+                  {scheduleModeDraft === 'cron' ? (
                     <div className={css.scheduleRow}>
-                      <input
-                        className={css.input}
-                        style={{ width: '120px' }}
-                        type="number"
-                        min={1}
-                        value={intervalValueDraft}
-                        placeholder={t('detail.schedule.intervalPlaceholder')}
-                        aria-label={t('detail.schedule.interval')}
-                        onChange={event => { setIntervalValueDraft(event.target.value); setError(undefined) }}
+                      <Input
+                        className={`${css.scheduleInput}${!draftCronValid ? ` ${css.scheduleInputInvalid}` : ''}`}
+                        value={cronDraft}
+                        aria-invalid={!draftCronValid}
+                        placeholder="0 9 * * *"
+                        spellCheck={false}
+                        aria-label={t('detail.schedule.cron')}
+                        onChange={event => { setCronDraft(event.target.value); setError(undefined) }}
                       />
                       <select
-                        className={css.input}
-                        value={intervalUnitDraft}
-                        aria-label={t('detail.schedule.unit')}
-                        onChange={event => { setIntervalUnitDraft(event.target.value as '1' | '60' | '1440'); setError(undefined) }}
+                        className={`${css.input} ${css.schedulePreset}`}
+                        value=""
+                        aria-label={t('detail.schedule.presets')}
+                        onChange={event => {
+                          const preset = event.target.value
+                          if (preset !== '') {
+                            setCronDraft(preset)
+                            setError(undefined)
+                          }
+                        }}
                       >
-                        <option value="1">{t('detail.timeout.minutes')}</option>
-                        <option value="60">{t('detail.schedule.unit.hours')}</option>
-                        <option value="1440">{t('detail.schedule.unit.days')}</option>
+                        <option value="">{t('detail.schedule.presets')}…</option>
+                        {SCHEDULE_PRESETS.map(preset => (
+                          <option key={preset.cron} value={preset.cron}>{t(preset.label)}</option>
+                        ))}
                       </select>
                     </div>
-                    <span className={css.fieldHint}>{t('detail.schedule.intervalHint')}</span>
-                  </>
-                )}
-                {scheduleEnabledDraft && (
-                  <p className={css.scheduleMeta}>
-                    {t('detail.schedule.nextRun')}{' '}
-                    {draftNextRun === undefined ? t('detail.schedule.notScheduled') : formatDateTime(draftNextRun)}
-                  </p>
-                )}
-              </>
-            ) : (
-              <>
-                <p className={css.detailText}>
-                  {enabled ? scheduleLabel(current.schedule) : t('detail.schedule.notScheduled')}
-                </p>
-                <p className={css.scheduleMeta}>
-                  {t('detail.schedule.lastTriggered')} {lastLabel}
-                  {' · '}{t('detail.schedule.nextRun')} {nextLabel}
-                  {skipTarget !== undefined && !archived && (
-                    <button
-                      type="button"
-                      className={css.linkButton}
-                      title={t('detail.schedule.skipHint', { time: formatDateTime(skipTarget) })}
-                      onClick={() => { void controller.skipNextRun(current.id) }}
-                    >
-                      {t('detail.schedule.skip')} ⏭
-                    </button>
+                  ) : (
+                    <>
+                      <div className={css.scheduleRow}>
+                        <Input
+                          style={{ width: '120px' }}
+                          type="number"
+                          min={1}
+                          value={intervalValueDraft}
+                          placeholder={t('detail.schedule.intervalPlaceholder')}
+                          aria-label={t('detail.schedule.interval')}
+                          onChange={event => { setIntervalValueDraft(event.target.value); setError(undefined) }}
+                        />
+                        <select
+                          className={css.input}
+                          value={intervalUnitDraft}
+                          aria-label={t('detail.schedule.unit')}
+                          onChange={event => { setIntervalUnitDraft(event.target.value as '1' | '60' | '1440'); setError(undefined) }}
+                        >
+                          <option value="1">{t('detail.timeout.minutes')}</option>
+                          <option value="60">{t('detail.schedule.unit.hours')}</option>
+                          <option value="1440">{t('detail.schedule.unit.days')}</option>
+                        </select>
+                      </div>
+                      <span className={css.fieldHint}>{t('detail.schedule.intervalHint')}</span>
+                    </>
                   )}
-                </p>
-                {canEditNextRun && (
-                  <>
-                    <span className={css.fieldHint}>{t('detail.schedule.editNextRun')}</span>
-                    <div className={css.scheduleRow}>
-                      <input
-                        className={css.input}
-                        type="datetime-local"
-                        value={nextRunDraft}
-                        aria-label={t('detail.schedule.nextRun')}
-                        onChange={event => { setNextRunDraft(event.target.value) }}
-                      />
-                      <button
-                        type="button"
-                        className={css.ghostButton}
-                        disabled={!nextRunDraftValid}
-                        onClick={saveNextRun}
-                      >
-                        {t('detail.save')}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </section>
-
-          <section className={css.detailSection}>
-            <h4>{t('detail.timeout')}</h4>
-            {editing ? (
-              <>
-                <div className={css.scheduleRow}>
-                  <input
-                    className={css.input}
-                    style={{ width: '120px' }}
-                    type="number"
-                    min={0}
-                    value={timeoutDraft}
-                    placeholder="∞"
-                    aria-label={t('detail.timeout')}
-                    onChange={event => { setTimeoutDraft(event.target.value); setError(undefined) }}
-                  />
-                  <span className={css.fieldHint}>{t('detail.timeout.minutes')}</span>
-                </div>
-                <span className={css.fieldHint}>{t('detail.timeout.hint')}</span>
-              </>
-            ) : (
-              <p className={css.detailText}>
-                {current.timeoutMs !== undefined && current.timeoutMs > 0
-                  ? `${timeoutLabel(current)} · ${t('detail.timeout.minutes')}`
-                  : t('detail.timeout.unlimited')}
-              </p>
-            )}
-          </section>
-
-          <section className={css.detailSection}>
-            <h4>{t('detail.execution')}</h4>
-            {current.executions.length === 0 ? (
-              <p className={css.detailText}>{t('detail.noExecution')}</p>
-            ) : (() => {
-              // Most recent first; collapsed shows only the latest few.
-              const all = [...current.executions].reverse()
-              const shown = showAllExecutions ? all : all.slice(0, EXECUTION_PREVIEW_COUNT)
-              return (
-                <>
-                  <ul className={css.executionList}>
-                    {shown.map(execution => (
-                      <ExecutionRow
-                        key={execution.id}
-                        execution={execution}
-                        onOpen={sessionId => { controller.openSession(sessionId) }}
-                      />
-                    ))}
-                  </ul>
-                  {all.length > EXECUTION_PREVIEW_COUNT && (
-                    <button
-                      type="button"
-                      className={css.linkButton}
-                      onClick={() => { setShowAllExecutions(prev => !prev) }}
-                    >
-                      {showAllExecutions
-                        ? t('detail.execution.collapse')
-                        : t('detail.execution.showAll', { count: String(all.length) })}
-                    </button>
+                  </div>
+                  {scheduleEnabledDraft && (
+                    <p className={css.scheduleMeta}>
+                      {t('detail.schedule.nextRun')}{' '}
+                      {draftNextRun === undefined ? t('detail.schedule.notScheduled') : formatDateTime(draftNextRun)}
+                    </p>
                   )}
                 </>
-              )
-            })()}
-          </section>
-        </div>
-
-        {editing && error !== undefined && <p className={css.formError}>{t(error)}</p>}
-
-        <footer className={css.detailFooter}>
-          {editing ? (
-            <>
-              <button
-                type="button"
-                className={css.ghostButton}
-                disabled={saving}
-                onClick={cancelEdit}
-              >
-                {t('detail.editCancel')}
-              </button>
-              <button
-                type="button"
-                className={css.primaryButton}
-                disabled={saving}
-                onClick={saveEdit}
-              >
-                {t('detail.save')}
-              </button>
-            </>
-          ) : (
-            <>
-              {archived && (
-                <span className={css.detailText}>{t('detail.archivedHint')}</span>
-              )}
-              {canEdit && (
-                <button
-                  type="button"
-                  className={css.ghostButton}
-                  onClick={startEdit}
-                >
-                  {t('detail.edit')}
-                </button>
-              )}
-              <button
-                type="button"
-                className={css.primaryButton}
-                disabled={running || archived}
-                onClick={() => {
-                  // Running kicks off a real agent session; close the detail so
-                  // the whole board stays visible while the job executes.
-                  controller.closeJob()
-                  void controller.rerunJob(current.id)
-                }}
-              >
-                {current.executions.length === 0 ? t('detail.run') : t('detail.rerun')}
-              </button>
-              {archived ? (
-                <button
-                  type="button"
-                  className={css.primaryButton}
-                  onClick={() => { void controller.restartJob(current.id) }}
-                >
-                  {t('detail.restart')}
-                </button>
               ) : (
-                !running && (
-                  <button
-                    type="button"
-                    className={css.ghostButton}
-                    onClick={() => { void controller.archiveJob(current.id) }}
-                  >
-                    {t('detail.archive')}
-                  </button>
+                <>
+                  <p className={css.detailText}>
+                    {enabled ? scheduleLabel(current.schedule) : t('detail.schedule.notScheduled')}
+                  </p>
+                  <p className={css.scheduleMeta}>
+                    {t('detail.schedule.lastTriggered')} {lastLabel}
+                    {' · '}{t('detail.schedule.nextRun')} {nextLabel}
+                    {skipTarget !== undefined && !archived && (
+                      <Button
+                        type="button"
+                        variant="toolbar" size="sm"
+                        title={t('detail.schedule.skipHint', { time: formatDateTime(skipTarget) })}
+                        disabled={acting}
+                  onClick={() => { void act(() => controller.skipNextRun(current.id)) }}
+                      >
+                        {t('detail.schedule.skip')} ⏭
+                      </Button>
+                    )}
+                  </p>
+                  {canEditNextRun && (
+                    <>
+                      <span className={css.fieldHint}>{t('detail.schedule.editNextRun')}</span>
+                      <div className={css.scheduleRow}>
+                        <Input
+                          type="datetime-local"
+                          value={nextRunDraft}
+                          aria-label={t('detail.schedule.nextRun')}
+                          onChange={event => { setNextRunDraft(event.target.value) }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={!nextRunDraftValid || acting}
+                          onClick={saveNextRun}
+                        >
+                          {t('detail.save')}
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </section>
+
+            <section className={css.detailSection}>
+              <h4>{t('detail.timeout')}</h4>
+              {editing ? (
+                <>
+                  <div className={css.scheduleRow}>
+                    <Input
+                      style={{ width: '120px' }}
+                      type="number"
+                      min={0}
+                      value={timeoutDraft}
+                      placeholder="∞"
+                      aria-label={t('detail.timeout')}
+                      onChange={event => { setTimeoutDraft(event.target.value); setError(undefined) }}
+                    />
+                    <span className={css.fieldHint}>{t('detail.timeout.minutes')}</span>
+                  </div>
+                  <span className={css.fieldHint}>{t('detail.timeout.hint')}</span>
+                </>
+              ) : (
+                <p className={css.detailText}>
+                  {current.timeoutMs !== undefined && current.timeoutMs > 0
+                    ? `${timeoutLabel(current)} · ${t('detail.timeout.minutes')}`
+                    : t('detail.timeout.unlimited')}
+                </p>
+              )}
+            </section>
+
+            <section className={css.detailSection}>
+              <h4>{t('detail.execution')}</h4>
+              {current.executions.length === 0 ? (
+                <p className={css.detailText}>{t('detail.noExecution')}</p>
+              ) : (() => {
+                // Most recent first; collapsed shows only the latest few.
+                const all = [...current.executions].reverse()
+                const shown = showAllExecutions ? all : all.slice(0, EXECUTION_PREVIEW_COUNT)
+                return (
+                  <>
+                    <ul className={css.executionList}>
+                      {shown.map(execution => (
+                        <ExecutionRow
+                          key={execution.id}
+                          execution={execution}
+                          onOpen={sessionId => { controller.openSession(sessionId) }}
+                        />
+                      ))}
+                    </ul>
+                    {all.length > EXECUTION_PREVIEW_COUNT && (
+                      <Button
+                        type="button"
+                        variant="toolbar" size="sm"
+                        onClick={() => { setShowAllExecutions(prev => !prev) }}
+                      >
+                        {showAllExecutions
+                          ? t('detail.execution.collapse')
+                          : t('detail.execution.showAll', { count: String(all.length) })}
+                      </Button>
+                    )}
+                  </>
                 )
-              )}
-              {!running && !archived && current.status !== 'idle' && (
-                <button
-                  type="button"
-                  className={css.ghostButton}
-                  onClick={() => { controller.resetJob(current.id) }}
-                >
-                  {t('detail.reset')}
-                </button>
-              )}
-              <button
-                type="button"
-                className={css.dangerButton}
-                onClick={() => { setConfirmDelete(true) }}
-              >
-                {t('detail.delete')}
-              </button>
-            </>
-          )}
-          <span className={css.detailMeta}>
-            {t('board.created')} {formatTime(current.createdAt)}
-          </span>
-        </footer>
-      </div>
+              })()}
+            </section>
+          </div>
+
+          {editing && error !== undefined && <p className={css.formError}>{t(error)}</p>}
+
+
+        </fieldset>
+      </Modal>
 
       {confirmDelete && (
         <Confirm
           message={t('delete.confirm', { name: current.title })}
           confirmLabel={t('delete.ok')}
           onCancel={() => { setConfirmDelete(false) }}
-          onConfirm={() => {
-            setConfirmDelete(false)
-            controller.deleteJob(current.id)
-            controller.closeJob()
-          }}
+          pending={acting}
+          onConfirm={() => { void act(() => controller.deleteJob(current.id)) }}
         />
       )}
-    </div>
+    </>
   )
 }

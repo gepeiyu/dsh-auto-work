@@ -8,11 +8,12 @@
  * covers the default workspace. Selecting a session pins the job to that
  * conversation (session context semantics).
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import type { ModelOptions, PresetOption, PresetOptions, TargetGroup } from '../target-options.ts'
 import type { BoardControllerFace } from '../controller-face.ts'
 import { isValidCron } from '../../core/schedule.ts'
 import { t, type AutoWorkKey } from '../locales.ts'
+import { Button, Input, Modal, Switch, SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives'
 import css from '../board.module.css'
 
 /** One selectable leaf inside a group. */
@@ -215,6 +216,10 @@ export function modelLeavesOf(options: ModelOptions): ModelLeaf[] {
 
 /** New-job form overlay. */
 export function NewJobModal({ controller, targetOptions, modelOptions, presetOptions, onClose }: { controller: BoardControllerFace; targetOptions: () => Promise<TargetGroup[]>; modelOptions: () => Promise<ModelOptions>; presetOptions: () => Promise<PresetOptions>; onClose: () => void }) {
+  const formId = useId()
+  const kindId = useId()
+  const [creating, setCreating] = useState(false)
+  const close = (): void => { if (!creating) onClose() }
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [prompt, setPrompt] = useState('')
@@ -283,6 +288,10 @@ export function NewJobModal({ controller, targetOptions, modelOptions, presetOpt
   }
 
   const submit = (): void => {
+    if (creating) return
+    if (title.trim() === '') { setError('new.required'); return }
+    if (scheduleOn && scheduleMode === 'cron' && !isValidCron(cron.trim())) { setError('detail.schedule.invalid'); return }
+    if (scheduleOn && scheduleMode === 'interval' && intervalDraftMinutes(intervalValue, intervalUnit) === undefined) { setError('detail.schedule.interval.invalid'); return }
     if (kind === 'command' && command.trim() === '') {
       setError('new.commandRequired')
       return
@@ -306,6 +315,8 @@ export function NewJobModal({ controller, targetOptions, modelOptions, presetOpt
           })()
         : isValidCron(cron.trim()) ? { cron: cron.trim() } : undefined
       : undefined)
+    setError(undefined)
+    setCreating(true)
     if (kind === 'command') {
       const created = controller.createJob({
         title,
@@ -318,12 +329,8 @@ export function NewJobModal({ controller, targetOptions, modelOptions, presetOpt
         ...(onceRunAt !== undefined ? { runAt: onceRunAt } : {}),
       })
       void Promise.resolve(created).then(job => {
-        if (job === undefined) {
-          setError('new.required')
-          return
-        }
-        onClose()
-      })
+        if (job !== undefined) onClose()
+      }).finally(() => { setCreating(false) })
       return
     }
     const model = modelLeaves.find(leaf => leaf.key === modelKey)
@@ -338,270 +345,229 @@ export function NewJobModal({ controller, targetOptions, modelOptions, presetOpt
       ...(onceRunAt !== undefined ? { runAt: onceRunAt } : {}),
     })
     void Promise.resolve(created).then(job => {
-      if (job === undefined) {
-        setError('new.required')
-        return
-      }
-      onClose()
-    })
+      if (job !== undefined) onClose()
+    }).finally(() => { setCreating(false) })
   }
 
   return (
-    <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-      <form
-        className={css.modal}
-        role="dialog"
-        aria-label={t('board.new')}
-        onSubmit={event => { event.preventDefault(); submit() }}
-      >
-        <h2 className={css.modalTitle}>{t('board.new')}</h2>
-
-        <div className={css.field}>
-          <span className={css.fieldLabel}>{t('new.kind')}</span>
-          <div className={css.kindToggle} role="radiogroup" aria-label={t('new.kind')}>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={kind === 'agent'}
-              className={`${css.kindOption} ${kind === 'agent' ? css.kindOptionActive : ''}`}
-              data-kind="agent"
-              onClick={() => { setKind('agent'); setError(undefined) }}
-            >
-              {t('new.kind.agent')}
-              <span className={css.kindOptionHint}>{t('new.kind.agentHint')}</span>
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={kind === 'command'}
-              className={`${css.kindOption} ${kind === 'command' ? css.kindOptionActive : ''}`}
-              data-kind="command"
-              onClick={() => { setKind('command'); setError(undefined) }}
-            >
-              {t('new.kind.command')}
-              <span className={css.kindOptionHint}>{t('new.kind.commandHint')}</span>
-            </button>
+    <Modal open title={t('board.new')} closeLabel={t('new.cancel')} onClose={close} className={css.jobModal} contentClassName={css.jobModalContent}
+      footer={<>
+        <Button type="button" variant="outline" disabled={creating} onClick={close}>{t('new.cancel')}</Button>
+        <Button type="submit" form={formId} variant="primary" disabled={creating}>{t('new.submit')}</Button>
+      </>}
+    >
+      <form id={formId} className={css.jobForm} onSubmit={event => { event.preventDefault(); submit() }}>
+        <fieldset disabled={creating} className={css.formFields}>
+          <div className={css.field}>
+            <span className={css.fieldLabel}>{t('new.kind')}</span>
+            <SegmentedControl id={kindId} label={t('new.kind')} value={kind} onChange={value => { setKind(value); setError(undefined) }}
+              options={[{ value: 'agent', label: t('new.kind.agent') }, { value: 'command', label: t('new.kind.command') }]} />
+            <span className={css.fieldHint}>{t(kind === 'agent' ? 'new.kind.agentHint' : 'new.kind.commandHint')}</span>
           </div>
-        </div>
+          <div className={css.jobForm} role="tabpanel" id={`${kindId}-${kind}-panel`} aria-labelledby={`${kindId}-${kind}`}>
 
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('new.title')}</span>
-          <input
-            className={css.input}
-            value={title}
-            autoFocus
-            placeholder={t('new.titlePlaceholder')}
-            onChange={event => { setTitle(event.target.value); setError(undefined) }}
-          />
-        </label>
-
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('new.description')}</span>
-          <textarea
-            className={css.input}
-            rows={1}
-            value={description}
-            placeholder={t('new.descriptionPlaceholder')}
-            onChange={event => { setDescription(event.target.value) }}
-          />
-        </label>
-
-        {kind === 'command' ? (
-          <>
             <label className={css.field}>
-              <span className={css.fieldLabel}>{t('new.command')}</span>
-              <input
-                className={css.input}
-                value={command}
-                placeholder={t('new.commandPlaceholder')}
-                aria-label={t('new.command')}
-                spellCheck={false}
-                onChange={event => { setCommand(event.target.value); setError(undefined) }}
+              <span className={css.fieldLabel}>{t('new.title')}</span>
+              <Input
+                value={title}
+                data-modal-autofocus
+                placeholder={t('new.titlePlaceholder')}
+                onChange={event => { setTitle(event.target.value); setError(undefined) }}
               />
             </label>
+
             <label className={css.field}>
-              <span className={css.fieldLabel}>{t('new.args')}</span>
-              <input
-                className={css.input}
-                value={args}
-                placeholder={t('new.argsPlaceholder')}
-                aria-label={t('new.args')}
-                spellCheck={false}
-                onChange={event => { setArgs(event.target.value) }}
-              />
-            </label>
-            <label className={css.field}>
-              <span className={css.fieldLabel}>{t('new.workdir')}</span>
-              <input
-                className={css.input}
-                value={commandWorkdir}
-                placeholder={t('new.workdirPlaceholder')}
-                aria-label={t('new.workdir')}
-                spellCheck={false}
-                onChange={event => { setCommandWorkdir(event.target.value) }}
-              />
-            </label>
-          </>
-        ) : (
-          <>
-            <label className={css.field}>
-              <span className={css.fieldLabel}>{t('new.prompt')}</span>
+              <span className={css.fieldLabel}>{t('new.description')}</span>
               <textarea
                 className={css.input}
-                rows={3}
-                value={prompt}
-                placeholder={t('new.promptPlaceholder')}
-                onChange={event => { setPrompt(event.target.value) }}
+                rows={1}
+                value={description}
+                placeholder={t('new.descriptionPlaceholder')}
+                onChange={event => { setDescription(event.target.value) }}
               />
             </label>
 
-            <div className={css.field}>
-              <span className={css.fieldLabel}>{t('new.target')}</span>
-              <TargetTree
-                groups={groups}
-                expanded={expanded}
-                selectedKey={selectedKey}
-                onToggle={toggleGroup}
-                onSelect={setSelectedKey}
-                presetOptions={presetOptionsState.presets}
-                presetDefault={presetOptionsState.default}
-                presetId={presetId}
-                onPresetChange={setPresetId}
-              />
-              <span className={css.fieldHint}>{t('new.target.hint')}</span>
-            </div>
-
-            <label className={css.field}>
-              <span className={css.fieldLabel}>{t('new.model')}</span>
-              <select
-                className={css.input}
-                value={modelKey}
-                aria-label={t('new.model')}
-                onChange={event => { setModelKey(event.target.value) }}
-              >
-                <option value="">{modelDefaultLabel}</option>
-                {modelLeaves.map(leaf => (
-                  <option key={leaf.key} value={leaf.key}>{leaf.label}</option>
-                ))}
-              </select>
-            </label>
-          </>
-        )}
-
-        <div className={css.field}>
-          {/* Toggle + mode dropdown share one row: .field is a column flex,
-              so without this wrapper the select would drop to its own line.
-              Unchecked → the dropdown is disabled (visible, not selectable). */}
-          <div className={css.scheduleRow}>
-            <label className={css.scheduleToggle}>
-              <input
-                type="checkbox"
-                checked={scheduleOn}
-                onChange={event => { setScheduleOn(event.target.checked) }}
-              />
-              <span>{t('new.schedule.enable')}</span>
-            </label>
-            <select
-              className={css.input}
-              style={{ width: '160px' }}
-              value={scheduleMode}
-              disabled={!scheduleOn}
-              aria-label={t('new.schedule.mode')}
-              onChange={event => {
-                setScheduleMode(event.target.value as 'cron' | 'interval' | 'once')
-                setError(undefined)
-              }}
-            >
-              <option value="cron">{t('detail.schedule.cron')}</option>
-              <option value="interval">{t('detail.schedule.modeInterval')}</option>
-              <option value="once">{t('detail.schedule.modeOnce')}</option>
-            </select>
-          </div>
-          {scheduleOn && (
-            <>
-              {scheduleMode === 'once' ? (
-                <>
-                  <div className={css.scheduleRow}>
-                    <input
-                      className={css.input}
-                      type="datetime-local"
-                      value={onceValue}
-                      aria-label={t('new.schedule.runAt')}
-                      onChange={event => { setOnceValue(event.target.value); setError(undefined) }}
-                    />
-                  </div>
-                  <span className={css.fieldHint}>{t('detail.schedule.nextRun')}</span>
-                </>
-              ) : scheduleMode === 'cron' ? (
-                <div className={css.scheduleRow}>
-                  <input
-                    className={`${css.input} ${css.scheduleInput}`}
-                    value={cron}
-                    placeholder="0 9 * * *"
+            {kind === 'command' ? (
+              <>
+                <label className={css.field}>
+                  <span className={css.fieldLabel}>{t('new.command')}</span>
+                  <Input
+                    value={command}
+                    placeholder={t('new.commandPlaceholder')}
+                    aria-label={t('new.command')}
                     spellCheck={false}
-                    aria-label={t('new.schedule.cron')}
-                    onChange={event => { setCron(event.target.value); setError(undefined) }}
+                    onChange={event => { setCommand(event.target.value); setError(undefined) }}
                   />
+                </label>
+                <label className={css.field}>
+                  <span className={css.fieldLabel}>{t('new.args')}</span>
+                  <Input
+                    value={args}
+                    placeholder={t('new.argsPlaceholder')}
+                    aria-label={t('new.args')}
+                    spellCheck={false}
+                    onChange={event => { setArgs(event.target.value) }}
+                  />
+                </label>
+                <label className={css.field}>
+                  <span className={css.fieldLabel}>{t('new.workdir')}</span>
+                  <Input
+                    value={commandWorkdir}
+                    placeholder={t('new.workdirPlaceholder')}
+                    aria-label={t('new.workdir')}
+                    spellCheck={false}
+                    onChange={event => { setCommandWorkdir(event.target.value) }}
+                  />
+                </label>
+              </>
+            ) : (
+              <>
+                <label className={css.field}>
+                  <span className={css.fieldLabel}>{t('new.prompt')}</span>
+                  <textarea
+                    className={css.input}
+                    rows={3}
+                    value={prompt}
+                    placeholder={t('new.promptPlaceholder')}
+                    onChange={event => { setPrompt(event.target.value) }}
+                  />
+                </label>
+
+                <div className={css.field}>
+                  <span className={css.fieldLabel}>{t('new.target')}</span>
+                  <TargetTree
+                    groups={groups}
+                    expanded={expanded}
+                    selectedKey={selectedKey}
+                    onToggle={toggleGroup}
+                    onSelect={setSelectedKey}
+                    presetOptions={presetOptionsState.presets}
+                    presetDefault={presetOptionsState.default}
+                    presetId={presetId}
+                    onPresetChange={setPresetId}
+                  />
+                  <span className={css.fieldHint}>{t('new.target.hint')}</span>
+                </div>
+
+                <label className={css.field}>
+                  <span className={css.fieldLabel}>{t('new.model')}</span>
                   <select
-                    className={`${css.input} ${css.schedulePreset}`}
-                    value=""
-                    aria-label={t('detail.schedule.presets')}
-                    onChange={event => {
-                      const preset = event.target.value
-                      if (preset !== '') {
-                        setCron(preset)
-                        setError(undefined)
-                      }
-                    }}
+                    className={css.input}
+                    value={modelKey}
+                    aria-label={t('new.model')}
+                    onChange={event => { setModelKey(event.target.value) }}
                   >
-                    <option value="">{t('detail.schedule.presets')}…</option>
-                    {SCHEDULE_PRESETS.map(preset => (
-                      <option key={preset.cron} value={preset.cron}>{t(preset.label)}</option>
+                    <option value="">{modelDefaultLabel}</option>
+                    {modelLeaves.map(leaf => (
+                      <option key={leaf.key} value={leaf.key}>{leaf.label}</option>
                     ))}
                   </select>
-                </div>
-              ) : (
-                <>
+                </label>
+              </>
+            )}
+
+          </div>
+          <div className={css.field}>
+            {/* Toggle + mode dropdown share one row: .field is a column flex,
+                so without this wrapper the select would drop to its own line.
+                Unchecked → the dropdown is disabled (visible, not selectable). */}
+            <div className={css.scheduleRow}>
+              <div className={css.scheduleToggle}>
+                <Switch checked={scheduleOn} onChange={setScheduleOn} label={t('new.schedule.enable')} disabled={creating} />
+                <span>{t('new.schedule.enable')}</span>
+              </div>
+              <select
+                className={css.input}
+                style={{ width: '160px' }}
+                value={scheduleMode}
+                disabled={!scheduleOn}
+                aria-label={t('new.schedule.mode')}
+                onChange={event => {
+                  setScheduleMode(event.target.value as 'cron' | 'interval' | 'once')
+                  setError(undefined)
+                }}
+              >
+                <option value="cron">{t('detail.schedule.cron')}</option>
+                <option value="interval">{t('detail.schedule.modeInterval')}</option>
+                <option value="once">{t('detail.schedule.modeOnce')}</option>
+              </select>
+            </div>
+            {scheduleOn && (
+              <>
+                {scheduleMode === 'once' ? (
+                  <>
+                    <div className={css.scheduleRow}>
+                      <Input
+                        type="datetime-local"
+                        value={onceValue}
+                        aria-label={t('new.schedule.runAt')}
+                        onChange={event => { setOnceValue(event.target.value); setError(undefined) }}
+                      />
+                    </div>
+                    <span className={css.fieldHint}>{t('detail.schedule.nextRun')}</span>
+                  </>
+                ) : scheduleMode === 'cron' ? (
                   <div className={css.scheduleRow}>
-                    <input
-                      className={css.input}
-                      style={{ width: '120px' }}
-                      type="number"
-                      min={1}
-                      value={intervalValue}
-                      placeholder={t('detail.schedule.intervalPlaceholder')}
-                      aria-label={t('detail.schedule.interval')}
-                      onChange={event => { setIntervalValue(event.target.value); setError(undefined) }}
+                    <Input
+                      className={`${css.scheduleInput}`}
+                      value={cron}
+                      placeholder="0 9 * * *"
+                      spellCheck={false}
+                      aria-label={t('new.schedule.cron')}
+                      onChange={event => { setCron(event.target.value); setError(undefined) }}
                     />
                     <select
-                      className={css.input}
-                      value={intervalUnit}
-                      aria-label={t('detail.schedule.unit')}
-                      onChange={event => { setIntervalUnit(event.target.value as '1' | '60' | '1440'); setError(undefined) }}
+                      className={`${css.input} ${css.schedulePreset}`}
+                      value=""
+                      aria-label={t('detail.schedule.presets')}
+                      onChange={event => {
+                        const preset = event.target.value
+                        if (preset !== '') {
+                          setCron(preset)
+                          setError(undefined)
+                        }
+                      }}
                     >
-                      <option value="1">{t('detail.timeout.minutes')}</option>
-                      <option value="60">{t('detail.schedule.unit.hours')}</option>
-                      <option value="1440">{t('detail.schedule.unit.days')}</option>
+                      <option value="">{t('detail.schedule.presets')}…</option>
+                      {SCHEDULE_PRESETS.map(preset => (
+                        <option key={preset.cron} value={preset.cron}>{t(preset.label)}</option>
+                      ))}
                     </select>
                   </div>
-                  <span className={css.fieldHint}>{t('detail.schedule.intervalHint')}</span>
-                </>
-              )}
-            </>
-          )}
-        </div>
+                ) : (
+                  <>
+                    <div className={css.scheduleRow}>
+                      <Input
+                        style={{ width: '120px' }}
+                        type="number"
+                        min={1}
+                        value={intervalValue}
+                        placeholder={t('detail.schedule.intervalPlaceholder')}
+                        aria-label={t('detail.schedule.interval')}
+                        onChange={event => { setIntervalValue(event.target.value); setError(undefined) }}
+                      />
+                      <select
+                        className={css.input}
+                        value={intervalUnit}
+                        aria-label={t('detail.schedule.unit')}
+                        onChange={event => { setIntervalUnit(event.target.value as '1' | '60' | '1440'); setError(undefined) }}
+                      >
+                        <option value="1">{t('detail.timeout.minutes')}</option>
+                        <option value="60">{t('detail.schedule.unit.hours')}</option>
+                        <option value="1440">{t('detail.schedule.unit.days')}</option>
+                      </select>
+                    </div>
+                    <span className={css.fieldHint}>{t('detail.schedule.intervalHint')}</span>
+                  </>
+                )}
+              </>
+            )}
+          </div>
 
-        {error !== undefined && <p className={css.formError}>{t(error)}</p>}
+          {error !== undefined && <p className={css.formError}>{t(error)}</p>}
 
-        <footer className={css.modalFooter}>
-          <button type="button" className={css.ghostButton} onClick={onClose}>
-            {t('new.cancel')}
-          </button>
-          <button type="submit" className={css.primaryButton}>
-            {t('new.submit')}
-          </button>
-        </footer>
+        </fieldset>
       </form>
-    </div>
+    </Modal>
   )
 }

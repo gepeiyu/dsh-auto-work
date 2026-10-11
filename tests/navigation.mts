@@ -36,7 +36,6 @@ assert.ok(refreshed)
 console.log('ok - DSH 0.2 navigation opens the failed execution through uiWorkspace')
 
 const originalFetch = globalThis.fetch
-const originalAlert = globalThis.alert
 const originalWarn = console.warn
 globalThis.fetch = async () => new Response(JSON.stringify({ jobs: [] }))
 try {
@@ -59,12 +58,11 @@ try {
   console.log('ok - the board stays visible until the exact target is selected')
 
   let notice = ''
-  globalThis.alert = text => { notice = String(text) }
   console.warn = () => {}
   const broken = new RemoteBoardController({
     list: face.list,
     open: () => { throw new Error('unknown session') },
-  })
+  }, message => { notice = message.params?.sessionId ?? '' })
   broken.openBoard()
   broken.openSession(failedSession)
   assert.equal(broken.getSnapshot().boardOpen, true)
@@ -147,6 +145,5 @@ try {
   console.log('ok - native global panel selection suppresses session highlights and preserves session navigation')
 } finally {
   globalThis.fetch = originalFetch
-  globalThis.alert = originalAlert
   console.warn = originalWarn
 }

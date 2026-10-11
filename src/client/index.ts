@@ -10,6 +10,7 @@
  * shell fails the whole boot when a plugin apply throws, and an external
  * plugin must not take the GUI down.
  */
+import { mountFeedback } from './feedback.tsx'
 import { RemoteBoardController } from './remote-controller.ts'
 import { sessionsFaceOf, type SessionsServiceShape, type WorkspaceNavigationShape } from './sessions-face.ts'
 import { mountBoard, type SlotsServiceShape } from './board-mount.tsx'
@@ -34,11 +35,14 @@ export function apply(ctx: unknown): void {
   const ctxTyped = ctx as { slots: SlotsServiceShape; sessions: SessionsServiceShape; uiWorkspace: WorkspaceNavigationShape; locale: LocaleServiceShape & SidebarLocaleShape; layout: PanelNavigationShape }
   const sessionsFace = sessionsFaceOf(ctxTyped.sessions, ctxTyped.uiWorkspace)
 
-  const controller = new RemoteBoardController(sessionsFace)
+  let feedback: ReturnType<typeof mountFeedback> | undefined
+  const controller = new RemoteBoardController(sessionsFace, notice => feedback?.report(notice))
   controller.start()
 
   const disposers: Array<() => void> = []
   try {
+    feedback = mountFeedback(ctxTyped.slots)
+    disposers.push(feedback.dispose)
     disposers.push(registerJapaneseLocale(ctxTyped.locale))
     // Session-target dropdown data source: rebuilt on each modal open.
     const targetOptions = (): ReturnType<typeof listTargetOptions> => {

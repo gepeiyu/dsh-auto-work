@@ -6,12 +6,13 @@
  * directly); the header keeps the search filter, new-job, and a
  * back-to-chat escape.
  */
-import { useEffect, useState, useSyncExternalStore } from 'react'
-import { selectedJobOf, type ControllerSnapshot } from '../../core/controller.ts'
+import { useEffect, useId, useState, useSyncExternalStore } from 'react'
+import { selectedJobOf } from '../../core/controller.ts'
 import { jobKind, type JobRecord, type JobStatus } from '../../core/jobs.ts'
 import type { TargetGroup, ModelOptions, PresetOptions } from '../target-options.ts'
 import type { BoardControllerFace } from '../controller-face.ts'
 import { currentLocale, formatDateTime, formatRelativeTime, subscribeLocale, t, type AutoWorkKey } from '../locales.ts'
+import { Button, Input, SegmentedTabs, type SegmentedTab } from '@deepseek-ai/dsh-client-ui-primitives'
 import css from '../board.module.css'
 import { BOARD_TABS, jobsOfTab, tabCounts, TAB_LABEL_KEY, type BoardTab } from './tabs.ts'
 import { NewJobModal } from './NewJobModal.tsx'
@@ -57,6 +58,7 @@ export function TimerBoard({ controller, targetOptions, modelOptions, presetOpti
     () => controller.subscribe(() => setSnapshot(controller.getSnapshot())),
     [controller],
   )
+  const tabId = useId()
   const [filter, setFilter] = useState('')
   const [tab, setTab] = useState<BoardTab>('all')
   const [showNew, setShowNew] = useState(false)
@@ -71,7 +73,7 @@ export function TimerBoard({ controller, targetOptions, modelOptions, presetOpti
       <header className={css.boardHeader}>
         <h2 className={css.boardTitle}>{t('board.title')}</h2>
         <span className={css.boardHint}>{t('board.hint')}</span>
-        <input
+        <Input
           className={css.search}
           type="search"
           placeholder={t('board.search')}
@@ -79,41 +81,34 @@ export function TimerBoard({ controller, targetOptions, modelOptions, presetOpti
           onChange={event => { setFilter(event.target.value) }}
           aria-label={t('board.search')}
         />
-        <button
+        <Button
           type="button"
-          className={css.primaryButton}
+          variant="primary"
           onClick={() => { setShowNew(true) }}
         >
           + {t('board.new')}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className={css.ghostButton}
+          variant="outline"
           onClick={() => { controller.closeBoard() }}
         >
           {t('board.close')}
-        </button>
+        </Button>
       </header>
 
-      <nav className={css.tabBar} role="tablist" aria-label={t('board.tabs')}>
-        {BOARD_TABS.map(key => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            className={css.tabButton}
-            data-tab={key}
-            data-active={tab === key ? '' : undefined}
-            aria-selected={tab === key}
-            onClick={() => { setTab(key) }}
-          >
-            <span className={css.tabLabel}>{t(TAB_LABEL_KEY[key])}</span>
-            <span className={css.tabCount} data-tab={key}>{counts[key]}</span>
-          </button>
-        ))}
-      </nav>
+      <SegmentedTabs
+        className={css.tabBar}
+        label={t('board.tabs')}
+        items={BOARD_TABS.map(key => ({
+          value: key, id: `${tabId}-${key}`, panelId: `${tabId}-${key}-panel`,
+          label: <span className={css.tabLabel}>{t(TAB_LABEL_KEY[key])}<span className={css.tabCount} data-tab={key}>{counts[key]}</span></span>,
+        })) as [SegmentedTab<BoardTab>, ...SegmentedTab<BoardTab>[]]}
+        value={tab}
+        onChange={setTab}
+      />
 
-      <div className={css.cardGrid}>
+      <div className={css.cardGrid} role="tabpanel" tabIndex={0} id={`${tabId}-${tab}-panel`} aria-labelledby={`${tabId}-${tab}`}>
         {visible.map(job => (
           <button
             key={job.id}
