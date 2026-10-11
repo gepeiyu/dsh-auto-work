@@ -122,8 +122,13 @@ export function mountSidebarEntry(controller: BoardControllerFace): () => void {
 
   // Reflect the board's open state on the row (active highlight).
   const syncActive = () => {
-    if (controller.getSnapshot().boardOpen) entry.dataset.active = 'true'
-    else delete entry.dataset.active
+    if (controller.getSnapshot().boardOpen) {
+      entry.dataset.active = 'true'
+      entry.setAttribute('aria-current', 'page')
+    } else {
+      delete entry.dataset.active
+      entry.removeAttribute('aria-current')
+    }
   }
   const unsubscribe = controller.subscribe(syncActive)
   syncActive()

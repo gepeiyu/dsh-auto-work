@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { RemoteBoardController } from '../src/client/remote-controller.ts'
 import { sessionsFaceOf } from '../src/client/sessions-face.ts'
+import { bindPanelNavigation } from '../src/client/panel-navigation.ts'
 
 const failedSession = 'session-54744fad-49a3-4c0b-b0fe-0d0bacda9e55'
 const previousSession = 'session-92b731bb-cae8-4bb3-8b5a-29d3ded78cc4'
@@ -84,6 +85,52 @@ try {
   assert.equal(refreshFailure.getSnapshot().boardOpen, false)
   refreshFailure.dispose()
   console.log('ok - refresh failure still permits opening an already known session')
+
+  let activePanelId: string | null = 'plugins'
+  let clearCount = 0
+  const panelListeners = new Set<() => void>()
+  const selectNativePanel = (id: string | null): void => {
+    activePanelId = id
+    for (const listener of [...panelListeners]) listener()
+  }
+  const layout = {
+    selectPanel(id: null) {
+      assert.equal(this, layout, 'native layout selection keeps its receiver')
+      clearCount += 1
+      selectNativePanel(id)
+    },
+    panelInfo: {
+      getSnapshot: () => ({ activePanelId }),
+      subscribe(fn: () => void) {
+        panelListeners.add(fn)
+        return () => { panelListeners.delete(fn) }
+      },
+    },
+  }
+  const panelController = new RemoteBoardController({ list: face.list, open() {} })
+  const unbind = bindPanelNavigation(panelController, layout)
+  assert.equal(activePanelId, 'plugins', 'mounting an inactive board preserves selection')
+  panelController.openBoard()
+  assert.equal(activePanelId, null, 'opening the board clears the native Plugins highlight')
+  assert.equal(panelController.getSnapshot().boardOpen, true)
+  await panelController.refresh()
+  assert.equal(clearCount, 1, 'job polling must not reset native navigation')
+  selectNativePanel('plugins')
+  assert.equal(panelController.getSnapshot().boardOpen, false, 'native navigation closes the board without a DOM click')
+  assert.equal(activePanelId, 'plugins')
+  panelController.openBoard()
+  assert.equal(activePanelId, null, 'returning from Plugins clears its selection again')
+  assert.equal(clearCount, 2)
+  panelController.toggleBoard()
+  assert.equal(panelController.getSnapshot().boardOpen, false)
+  assert.equal(clearCount, 2, 'closing the board preserves the conversation')
+  unbind()
+  assert.equal(panelListeners.size, 0)
+  selectNativePanel('plugins')
+  panelController.openBoard()
+  assert.equal(activePanelId, 'plugins', 'unbinding removes the controller listener too')
+  panelController.dispose()
+  console.log('ok - board/native panel selections are exclusive across entry, polling, navigation and cleanup')
 } finally {
   globalThis.fetch = originalFetch
   globalThis.alert = originalAlert

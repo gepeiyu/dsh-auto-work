@@ -17,9 +17,10 @@ import { mountBoard } from './board-mount.tsx'
 import { mountSidebarEntry } from './sidebar-entry.ts'
 import { listTargetOptions } from './target-options.ts'
 import { registerJapaneseLocale, type LocaleServiceShape } from './language-registration.ts'
+import { bindPanelNavigation, type PanelNavigationShape } from './panel-navigation.ts'
 
 /** Required services (fiber inject waiting — the runtime must be up first). */
-export const inject = ['slots', 'sessions', 'uiWorkspace', 'locale']
+export const inject = ['slots', 'sessions', 'uiWorkspace', 'locale', 'layout']
 
 /**
  * Mount the auto-work board.
@@ -31,7 +32,7 @@ export function apply(ctx: unknown): void {
   // service members (list/open/refresh) straight off it throws "cannot get
   // property ... without inject", and an eager read at apply time fails the
   // whole web boot. Everything downstream works on the plain service object.
-  const ctxTyped = ctx as { sessions: SessionsServiceShape; uiWorkspace: WorkspaceNavigationShape; locale: LocaleServiceShape }
+  const ctxTyped = ctx as { sessions: SessionsServiceShape; uiWorkspace: WorkspaceNavigationShape; locale: LocaleServiceShape; layout: PanelNavigationShape }
   const sessionsFace = sessionsFaceOf(ctxTyped.sessions, ctxTyped.uiWorkspace)
 
   const controller = new RemoteBoardController(sessionsFace)
@@ -40,6 +41,7 @@ export function apply(ctx: unknown): void {
   const disposers: Array<() => void> = []
   try {
     disposers.push(registerJapaneseLocale(ctxTyped.locale))
+    disposers.push(bindPanelNavigation(controller, ctxTyped.layout))
     // Session-target dropdown data source: rebuilt on each modal open.
     const targetOptions = (): ReturnType<typeof listTargetOptions> => {
       try {
