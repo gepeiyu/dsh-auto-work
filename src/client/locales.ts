@@ -18,7 +18,6 @@ export const zh = {
 
   'entry.label': '定时任务',
   'board.title': '定时任务 × Agent',
-  'board.close': '返回对话',
   'board.new': '新建任务',
   'board.search': '筛选任务…',
   'board.empty': '这里还没有任务',
@@ -170,7 +169,6 @@ export const en: Record<keyof typeof zh, string> = {
 
   'entry.label': 'Timed Jobs',
   'board.title': 'Timed Jobs × Agent',
-  'board.close': 'Back to chat',
   'board.new': 'New Job',
   'board.search': 'Filter jobs…',
   'board.empty': 'No jobs here yet',
@@ -322,7 +320,6 @@ export const ja: Record<keyof typeof zh, string> = {
 
   'entry.label': '定期タスク',
   'board.title': '定期タスク × Agent',
-  'board.close': 'チャットに戻る',
   'board.new': '新規タスク',
   'board.search': 'タスクを絞り込む…',
   'board.empty': 'タスクはまだありません',

@@ -3,8 +3,8 @@
  * A status-tab bar (全部/待机/进行中/成功/失败/已归档, each with a live
  * count over the whole ledger) narrows the list; jobs render as compact
  * cards in a responsive grid. Cards open the job detail (never execute
- * directly); the header keeps the search filter, new-job, and a
- * back-to-chat escape.
+ * directly); the header keeps the search filter and new-job action.
+ * The native sidebar owns navigation back to conversations.
  */
 import { useEffect, useId, useState, useSyncExternalStore } from 'react'
 import { selectedJobOf } from '../../core/controller.ts'
@@ -87,13 +87,6 @@ export function TimerBoard({ controller, targetOptions, modelOptions, presetOpti
           onClick={() => { setShowNew(true) }}
         >
           + {t('board.new')}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => { controller.closeBoard() }}
-        >
-          {t('board.close')}
         </Button>
       </header>
 
